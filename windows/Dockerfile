@@ -5,8 +5,6 @@ SHELL ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell", "-NonIntera
 
 ARG DOCKER_MAJOR=29
 ARG PLASTIC_MAJOR=11
-ARG POWERSHELL_VERSION=7.6.4
-ARG POWERSHELL_SHA256=80832551c52809301e6071c8bac977beb5a2f1ec953eb4db9f94deb953333793
 
 # Jenkins
 USER ContainerAdministrator
