@@ -4,7 +4,9 @@ FROM jenkins/inbound-agent:jdk21-windowsservercore-${OS_BASE}
 SHELL ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell", "-NonInteractive", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 ARG DOCKER_MAJOR=29
+ARG NODE_MAJOR=24
 ARG PLASTIC_MAJOR=11
+ARG POWERSHELL_MAJOR=7
 
 # Jenkins
 USER ContainerAdministrator
@@ -22,18 +24,69 @@ VOLUME ["C:/jenkins/workspace"]
 RUN git config --global --add safe.directory *
 
 # PowerShell
-ARG POWERSHELL_VERSION=7.6.4
-ADD https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/PowerShell-${POWERSHELL_VERSION}-win-x64.zip C:/powershell.zip
-RUN $archive = 'C:/powershell.zip'; \
+ADD https://api.github.com/repos/PowerShell/PowerShell/releases?per_page=100 C:/powershell-releases.json
+RUN $releases = Get-Content C:/powershell-releases.json -Raw | ConvertFrom-Json; \
+    $release = $releases | \
+      Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -match ('^v' + $env:POWERSHELL_MAJOR + '\.\d+\.\d+$') } | \
+      Sort-Object { [version]$_.tag_name.Substring(1) } | \
+      Select-Object -Last 1; \
+    if (-not $release) { throw ('No stable PowerShell ' + $env:POWERSHELL_MAJOR + ' release found') }; \
+    $powershellVersion = $release.tag_name.Substring(1); \
+    $archiveName = 'PowerShell-' + $powershellVersion + '-win-x64.zip'; \
+    $archive = 'C:/' + $archiveName; \
+    $asset = $release.assets | Where-Object name -eq $archiveName; \
+    $hashesAsset = $release.assets | Where-Object name -eq 'hashes.sha256'; \
+    if (-not $asset -or -not $hashesAsset) { throw ('PowerShell ' + $powershellVersion + ' release assets are incomplete') }; \
+    curl.exe -fsSL $asset.browser_download_url -o $archive; \
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to download PowerShell' }; \
+    curl.exe -fsSL $hashesAsset.browser_download_url -o C:/powershell-hashes; \
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to download PowerShell hashes' }; \
+    $hashLine = Get-Content C:/powershell-hashes | Where-Object { $_ -match ('\*' + [regex]::Escape($archiveName) + '$') }; \
+    if (-not $hashLine) { throw ('No checksum found for ' + $archiveName) }; \
+    $expectedHash = ($hashLine -split '\s+')[0]; \
+    $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash; \
+    if ($actualHash -ne $expectedHash) { throw ('Checksum verification failed for ' + $archiveName) }; \
     $destination = 'C:/Program Files/PowerShell/7'; \
     New-Item -ItemType Directory -Force $destination | Out-Null; \
     Expand-Archive -LiteralPath $archive -DestinationPath $destination; \
-    Remove-Item -LiteralPath $archive; \
+    Remove-Item -LiteralPath $archive,C:/powershell-hashes,C:/powershell-releases.json; \
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine'); \
+    [Environment]::SetEnvironmentVariable('Path', ($destination + ';' + $machinePath), 'Machine'); \
+    $pwsh = Join-Path $destination pwsh.exe; \
+    $installedVersion = & $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'; \
+    if ($LASTEXITCODE -ne 0 -or $installedVersion -ne $powershellVersion) { throw ('Unexpected PowerShell version: ' + $installedVersion) }; \
+    $installedVersion
+RUN pwsh.exe -NoLogo -NoProfile -Command \
+        'if ($PSVersionTable.PSVersion.Major -ne [int]$env:POWERSHELL_MAJOR) { exit 1 }'; \
+    if ($LASTEXITCODE -ne 0) { throw 'PowerShell smoke check failed' }
+
+# Node.js
+ADD https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/SHASUMS256.txt C:/node-shasums
+RUN $nodePattern = '(?m)^(?<hash>[0-9a-f]{64})\s+\*?(?<archive>node-v(?<version>' + $env:NODE_MAJOR + '\.\d+\.\d+)-win-x64\.zip)\r?$'; \
+    $nodeRelease = [regex]::Match((Get-Content C:/node-shasums -Raw), $nodePattern); \
+    if (-not $nodeRelease.Success) { throw ('No Node.js ' + $env:NODE_MAJOR + ' release found') }; \
+    $archiveName = $nodeRelease.Groups['archive'].Value; \
+    $archive = 'C:/' + $archiveName; \
+    $nodeVersion = $nodeRelease.Groups['version'].Value; \
+    $nodeUrl = 'https://nodejs.org/dist/latest-v' + $env:NODE_MAJOR + '.x/' + $archiveName; \
+    curl.exe -fsSL $nodeUrl -o $archive; \
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to download Node.js' }; \
+    $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash; \
+    if ($actualHash -ne $nodeRelease.Groups['hash'].Value) { throw ('Checksum verification failed for ' + $archiveName) }; \
+    Expand-Archive -LiteralPath $archive -DestinationPath C:/node; \
+    $destination = 'C:/Program Files/nodejs'; \
+    Move-Item -LiteralPath ('C:/node/node-v' + $nodeVersion + '-win-x64') -Destination $destination; \
+    Remove-Item -LiteralPath $archive,C:/node-shasums; \
+    Remove-Item -LiteralPath C:/node -Force; \
     $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine'); \
     [Environment]::SetEnvironmentVariable('Path', ($destination + ';' + $machinePath), 'Machine')
-RUN pwsh.exe -NoLogo -NoProfile -Command \
-        'if ($PSVersionTable.PSVersion.ToString() -ne $env:POWERSHELL_VERSION) { exit 1 }'; \
-    if ($LASTEXITCODE -ne 0) { throw 'PowerShell smoke check failed' }
+RUN $nodeVersion = node.exe --version; \
+    if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch ('^v' + $env:NODE_MAJOR + '\.')) { throw ('Unexpected Node.js version: ' + $nodeVersion) }; \
+    npm.cmd --version; \
+    if ($LASTEXITCODE -ne 0) { throw 'npm smoke check failed' }; \
+    npx.cmd --version; \
+    if ($LASTEXITCODE -ne 0) { throw 'npx smoke check failed' }; \
+    $nodeVersion
 
 # Docker CLI
 ENV DOCKER_HOST=npipe:////./pipe/docker_engine

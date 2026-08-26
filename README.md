@@ -6,8 +6,8 @@ Jenkins agents. Both variants extend the official
 image and use Java 21.
 
 The image is intended for Jenkins jobs that need Git, Unity Version Control
-(the `cm` command), and access to a Docker daemon supplied by the host. This
-includes Jenkinsfiles that use the Docker Pipeline plugin's
+(the `cm` command), Node.js, PowerShell, and access to a Docker daemon supplied
+by the host. This includes Jenkinsfiles that use the Docker Pipeline plugin's
 `docker.image("image").inside { ... }` syntax. The image contains only the
 Docker client; it does not contain or run a Docker daemon.
 
@@ -28,15 +28,17 @@ Both variants provide the same agent-level capabilities:
 | Git and Git LFS | Yes | Yes |
 | Unity Version Control 11 CLI (`cm`) | Core client package | Client installer |
 | Docker CLI 29 | Client binary only | Client binary only |
-| PowerShell 7.6.4 (`pwsh`) | No | Yes |
+| Node.js 24 (`node`, `npm`, and `npx`) | Yes | Yes |
+| PowerShell 7 (`pwsh`) | Yes | Yes |
 
 Docker Compose is intentionally not installed. The Jenkins Docker Pipeline
 plugin uses the Docker CLI directly and does not require Compose for
 `docker.image(...).inside { ... }`.
 
-Both Dockerfiles follow Docker major version 29 and Unity Version Control major
-version 11. Each platform resolves and installs its newest available release in
-that major line during the build. Linux and Windows versions can differ when a
+Both Dockerfiles follow Docker major version 29, Node.js major version 24,
+PowerShell major version 7, and Unity Version Control major version 11. Each
+platform resolves and installs its newest available stable release in that
+major line during the build. Linux and Windows versions can differ when a
 release is not yet available for both platforms, but neither image silently
 upgrades to a new major version.
 
@@ -76,16 +78,16 @@ default configuration, local builds are tagged as
 Build directly from the repository root:
 
 ```text
-docker --context linux build --tag tmp/jenkins-agent:latest --file linux/Dockerfile linux
-docker --context windows build --tag tmp/jenkins-agent:latest --file windows/Dockerfile windows
+docker --context linux build --tag tmp/jenkins-agent:latest --file linux/Dockerfile .
+docker --context windows build --tag tmp/jenkins-agent:latest --file windows/Dockerfile .
 ```
 
 The Windows Dockerfile defaults to LTSC 2019. Build either Windows variant
 explicitly with its matching image tag and `OS_BASE` build argument:
 
 ```text
-docker --context windows build --build-arg OS_BASE=ltsc2019 --tag tmp/jenkins-agent:ltsc2019 --file windows/Dockerfile windows
-docker --context windows build --build-arg OS_BASE=ltsc2022 --tag tmp/jenkins-agent:ltsc2022 --file windows/Dockerfile windows
+docker --context windows build --build-arg OS_BASE=ltsc2019 --tag tmp/jenkins-agent:ltsc2019 --file windows/Dockerfile .
+docker --context windows build --build-arg OS_BASE=ltsc2022 --tag tmp/jenkins-agent:ltsc2022 --file windows/Dockerfile .
 ```
 
 On Windows, the following interactive entry points provide the same builds and
