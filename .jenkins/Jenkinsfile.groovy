@@ -9,10 +9,14 @@ def candidateImage() {
 }
 
 def testImage() {
-    docker.image(candidateImage()).inside() {
+    docker.image(candidateImage()).inside("--entrypoint=''") {
         exec 'docker --version'
         exec 'git --version'
-        exec 'cm --version'
+        exec 'cm version'
+        exec 'pwsh --version'
+        exec 'node --version'
+        exec 'npm --version'
+        exec 'npx -y hello Faulo'
     }
 }
 
