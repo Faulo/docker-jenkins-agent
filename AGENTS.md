@@ -6,35 +6,23 @@ Shared instructions for coding agents. Project-specific information is kept in [
 
 ### Repository and environment
 
-Repository builds Linux and Windows variants of one Docker image. Shared build
-inputs live in `common/`; platform inputs live in `linux/` and `windows/`. Both
-builds use repository root as build context.
+Repository builds Linux and Windows variants of one Docker image. Shared build inputs live in `common/`; platform inputs live in `linux/` and `windows/`. Both builds use repository root as build context.
 
-Always pass `--context linux` or `--context windows` to Docker commands. Never
-rely on active context. Root `.env` is authoritative for image name, test args,
-and test command. Use `docker context ls` to discover other daemons available via network.
+Always pass `--context linux` or `--context windows` to Docker commands. Never rely on active context. Root `.env` is authoritative for image name, test args, and test command. Use `docker context ls` to discover other daemons available via network.
 
-Only images under disposable `tmp/` namespace may be built, tagged,
-overwritten, or removed. Treat every other image as read-only.
+Only images under disposable `tmp/` namespace may be built, tagged, overwritten, or removed. Treat every other image as read-only.
 
 ### Batch entry points
 
-Root batch scripts are interactive Windows Explorer entry points and pause for
-output visibility. For agent automation, construct Docker commands directly
-instead of invoking pausing batch files.
+Root batch scripts are interactive Windows Explorer entry points and pause for output visibility. For agent automation, construct Docker commands directly instead of invoking pausing batch files.
 
 ### Build and validation
 
-Builds are generally large, network-dependent, and may require matching Windows host.
-Report skipped targets and concrete reasons. Preserve checksum verification,
-download validation, native exit-code checks, and explicit error handling.
+Builds are generally large, network-dependent, and may require matching Windows host. Report skipped targets and concrete reasons. Preserve checksum verification, download validation, native exit-code checks, and explicit error handling.
 
 ### Documentation and style
 
-Keep Dockerfile comments focused on non-obvious reasons. Preserve file shell:
-PowerShell for Windows Dockerfile, POSIX shell for Linux Dockerfile, batch for
-`.bat`. Keep tool versions and checksums near constrained installation logic.
-Update `README.md` when image contents, prerequisites, or public commands change.
+Keep Dockerfile comments focused on non-obvious reasons. Preserve file shell: PowerShell for Windows Dockerfile, POSIX shell for Linux Dockerfile, batch for `.bat`. Keep tool versions and checksums near constrained installation logic. Update `README.md` when image contents, prerequisites, or public commands change.
 
 ### Release
 
@@ -70,24 +58,17 @@ If the design contract changes at any point, repeat from Phase 1, step 1.
 
 ### Meta commands
 
-These short messages have special handling when they appear alone in a user
-message:
+These short messages have special handling when they appear alone in a user message:
 
 - `ping`: Reply with `pong`.
 - `.`: Reply with `.`.
 - `?`: Continue the previous response or task after an interruption.
-- `ticket <URI>`: Read the linked ticket and all comments through the available
-  integration. Inspect the project, reproduce the current behavior, and run
-  relevant checks as needed. Then explain the request, project context,
-  reproducibility, risks, and a proposed implementation plan. Do not edit
-  files, change remote state, commit, or push until the user approves the
-  approach.
+- `ticket <URI>`: Read the linked ticket and all comments through the available integration. Inspect the project, reproduce the current behavior, and run relevant checks as needed. Then explain the request, project context, reproducibility, risks, and a proposed implementation plan. Do not edit files, change remote state, commit, or push until the user approves the approach.
 - `can you <x>?` is a question about your knowledge, capabilities or permissions. It is not an instruction to perform `x`.
 
 ### Compatibility
 
-Follow semantic versioning. Preserve backward compatibility for public APIs
-unless the task explicitly permits a breaking change.
+Follow semantic versioning. Preserve backward compatibility for public APIs unless the task explicitly permits a breaking change.
 
 ### Project conventions
 
@@ -95,28 +76,32 @@ unless the task explicitly permits a breaking change.
 
 ### Git
 
-Git mutations are forbidden by default. Agents may use read-only inspection
-commands such as `git status`, `git log`, `git diff`, `git show`, `git blame`,
-and `git branch --list` without additional permission.
+Git mutations are forbidden by default. Agents may use read-only inspection commands such as `git status`, `git log`, `git diff`, `git show`, `git blame`, and `git branch --list` without additional permission.
 
-An agent may perform Git mutations only after the user explicitly opts in.
-Permission is limited to the operations and task the user authorized; do not
-treat prior authorization as standing permission for later mutations.
+An agent may perform Git mutations only after the user explicitly opts in. Permission is limited to the operations and task the user authorized; do not treat prior authorization as standing permission for later mutations.
 
 When Git mutations are authorized:
 
-- The user is responsible for choosing the branch. Verify the current branch
-  and working-tree status before editing and again before creating commits.
-- Treat all unknown local changes as user work. Do not overwrite, stage,
-  commit, restore, or otherwise alter them.
+- The user is responsible for choosing the branch. Verify the current branch and working-tree status before editing and again before creating commits.
+- Treat all unknown local changes as user work. Do not overwrite, stage, commit, restore, or otherwise alter them.
 - Keep commits small and cohesive.
-- Format agent-authored commits according to Conventional Commits 1.0.0:
-  `<type>[optional scope]: <description>`.
-- When working from a ticket, include the ticket key and URL in the commit
-  footer.
-- Before committing, read the configured Git author name and email. Keep the
-  configured email, append the agent name once, in brackets to the configured author name (e.g. `Daniel Schulz (Codex)`),
-  and pass that identity explicitly with `git commit --author`. Do not modify
-  repository or global Git configuration.
-- Do not force-push, amend, rebase, reset, or discard changes unless the user
-  explicitly requests that specific operation.
+- Format agent-authored commits according to Conventional Commits 1.0.0: `<type>[optional scope]: <description>`.
+- When working from a ticket, include the ticket key and URL in the commit footer.
+- Before committing, read the configured Git author name and email. Keep the configured email, append the agent name once, in brackets to the configured author name (e.g. `Daniel Schulz (Codex)`), and pass that identity explicitly with `git commit --author`. Do not modify repository or global Git configuration.
+- Do not force-push, amend, rebase, reset, or discard changes unless the user explicitly requests that specific operation.
+
+### CI Infrastructure
+
+Jenkins runs at `https://ci.slothsoft.net/`. Infrastructure reads are always permitted; triggering builds or making any other change requires explicit user consent.
+
+Use these access methods:
+
+- `ssh ci.slothsoft.net <command>` invokes the Jenkins CLI directly; it does not open a host shell. Useful read-only commands include `who-am-i`, `list-jobs`, and `console`.
+- `ssh <host>` opens that server's shell.
+- `docker --context <host> ...` talks to that server's Docker daemon. Always name the context explicitly.
+
+The three CI servers are:
+
+- `groke`: Ubuntu; runs the Jenkins controller and a Jenkins agent in the `agents_jenkins-agent` container. SSH alias and Docker context: `groke`.
+- `garl`: Ubuntu; runs a Jenkins agent in the `agents_jenkins-agent` container, connected to the controller on `groke`. SSH alias and Docker context: `garl`.
+- `dende`: Windows Server 2019; runs a Jenkins agent in the `agents_jenkins-agent` container, connected to the controller on `groke`. SSH alias and Docker context: `dende`.
