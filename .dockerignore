@@ -1,0 +1,13 @@
+**
+!Directory.Build.props
+!common/
+!common/Agent/
+!common/Agent/**
+common/Agent/bin/
+common/Agent/bin/**
+common/Agent/obj/
+common/Agent/obj/**
+!linux/
+!linux/Dockerfile
+!windows/
+!windows/Dockerfile

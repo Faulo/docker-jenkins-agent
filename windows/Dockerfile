@@ -1,4 +1,19 @@
 ARG OS_BASE=ltsc2019
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0-windowsservercore-${OS_BASE} AS agent-build
+
+WORKDIR C:/source
+
+COPY Directory.Build.props .
+COPY common/Agent/ .
+
+RUN dotnet publish Agent.csproj \
+        --configuration Release \
+        --runtime win-x64 \
+        --self-contained true \
+        --property:PublishSingleFile=true \
+        --output C:/out
+
 FROM jenkins/inbound-agent:jdk21-windowsservercore-${OS_BASE}
 
 SHELL ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell", "-NonInteractive", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
@@ -134,3 +149,12 @@ RUN $plasticPattern = '(?m)^Version:\s*(' + $env:PLASTIC_MAJOR + '\.\S+)\s*$'; \
     if ($LASTEXITCODE -ne 0) { throw 'Unity Version Control smoke check failed' }; \
     if ($installedVersion -notmatch ('^' + [regex]::Escape($plasticVersion) + '(?:\s|$)')) { throw ('Unexpected Unity Version Control version: ' + $installedVersion) }; \
     $installedVersion
+
+COPY --from=agent-build C:/out/agent.exe C:/jenkins/agent.exe
+RUN C:/jenkins/agent.exe --health; \
+    if ($LASTEXITCODE -ne 0) { throw 'Jenkins agent health check failed' }
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["C:/jenkins/agent.exe", "--health"]
+
+ENTRYPOINT ["C:/jenkins/agent.exe"]

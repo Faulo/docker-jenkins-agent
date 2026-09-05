@@ -1,3 +1,17 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS agent-build
+
+WORKDIR /source
+
+COPY Directory.Build.props .
+COPY common/Agent/ .
+
+RUN dotnet publish Agent.csproj \
+        --configuration Release \
+        --runtime linux-x64 \
+        --self-contained true \
+        --property:PublishSingleFile=true \
+        --output /out
+
 FROM jenkins/inbound-agent:trixie-jdk21
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -86,3 +100,11 @@ RUN echo 'deb [trusted=yes allow-insecure=yes] https://www.plasticscm.com/plasti
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     cm version | grep -E "^${PLASTIC_MAJOR}\."
+
+COPY --from=agent-build --chmod=755 /out/agent /jenkins/agent
+RUN /jenkins/agent --health
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["/jenkins/agent", "--health"]
+
+ENTRYPOINT ["/jenkins/agent"]

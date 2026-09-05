@@ -30,6 +30,7 @@ Both variants provide the same agent-level capabilities:
 | Docker CLI 29 | Client binary only | Client binary only |
 | Node.js 24 (`node`, `npm`, and `npx`) | Yes | Yes |
 | PowerShell 7 (`pwsh`) | Yes | Yes |
+| Indexed YAML agent configuration | Yes | Yes |
 
 Docker Compose is intentionally not installed. The Jenkins Docker Pipeline
 plugin uses the Docker CLI directly and does not require Compose for
@@ -148,6 +149,55 @@ services:
 Set `JENKINS_WEB_SOCKET: "true"` in the environment-based form when the agent
 should connect over WebSocket.
 
+### Indexed agent configuration
+
+For a global Docker Swarm service, mount a YAML document containing one agent
+environment per index and set both of these variables:
+
+- `JENKINS_CONFIG_FILE`: the explicit path to the mounted YAML document.
+- `JENKINS_CONFIG_INDEX`: the exact, case-sensitive top-level key to select.
+
+For example:
+
+```yaml
+Dende:
+  JENKINS_AGENT_NAME: Dende
+  JENKINS_SECRET: example-secret
+groke:
+  JENKINS_AGENT_NAME: Mörkö
+  JENKINS_SECRET: example-secret
+```
+
+The selected value must be a mapping whose keys and values are YAML scalars
+that can be represented as environment variables. The selected mapping is
+applied after the container environment, so it is authoritative when a name
+is present in both places. Values are never printed by the entrypoint.
+
+A Linux Swarm service can select the record for the node hosting each task:
+
+```yaml
+services:
+  agent:
+    image: faulo/jenkins-agent:latest
+    environment:
+      JENKINS_CONFIG_FILE: /run/secrets/jenkins_agents_v1
+      JENKINS_CONFIG_INDEX: '{{.Node.Hostname}}'
+    secrets:
+      - jenkins_agents_v1
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.labels.slothsoft.jenkins-agent == true
+```
+
+Use the platform's actual secret mount path on Windows, for example
+`C:/ProgramData/Docker/secrets/jenkins_agents_v1`. If either configuration
+variable is set without the other, the file cannot be parsed, the index is
+missing or is not a mapping, or an entry cannot be represented safely, the
+container exits before starting Jenkins. Errors identify the file and index
+but do not include selected values.
+
 In addition to the Jenkins connection settings, mount the platform's Docker
 endpoint if jobs need to invoke Docker. Any job using this image can then use
 the host daemon through the included Docker CLI.
@@ -173,6 +223,15 @@ persistence or host access is required.
 Refer to the
 [`jenkins/inbound-agent` documentation](https://github.com/jenkinsci/docker-agent)
 for the supported Jenkins connection modes and launch examples.
+
+## Health check
+
+Both variants use `/jenkins/agent --health` or
+`C:/jenkins/agent.exe --health` as their Docker health check. The command first
+validates and loads any indexed configuration, then asks the bundled Jenkins
+Remoting JAR to report its version. A successful probe confirms that the
+entrypoint, Java runtime, Remoting JAR, and mounted configuration are usable;
+it does not test controller connectivity.
 
 ## Runtime defaults and security
 
