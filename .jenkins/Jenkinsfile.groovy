@@ -131,14 +131,15 @@ selected:
 
 def testImage() {
     testEntrypoint()
+    def scriptSuffix = isUnix() ? '' : '.cmd'
     def probes = [
         [command: 'docker --version', expected: 'Docker version 29.'],
         [command: 'git --version', expected: 'git version'],
         [command: 'cm version', expected: '11.'],
         [command: 'pwsh --version', expected: 'PowerShell 7.'],
         [command: 'node --version', expected: 'v24.'],
-        [command: 'npm --version', expected: '.'],
-        [command: 'npx -y hello Faulo', expected: 'Hello']
+        [command: "npm${scriptSuffix} --version", expected: '.'],
+        [command: "npx${scriptSuffix} -y hello Faulo", expected: 'Hello']
     ]
     probes.each { probe ->
         def result = runContainer(probe.command, [], null, false)
