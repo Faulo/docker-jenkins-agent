@@ -130,6 +130,9 @@ selected:
 
 def testImage() {
     testEntrypoint()
+    dir(pwd(tmp: true)) {
+        writeFile file: '.docker-workflow', text: ''
+    }
     docker.image(candidateImage()).inside("--entrypoint=''") {
         exec 'docker --version'
         exec 'git --version'
