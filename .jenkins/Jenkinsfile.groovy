@@ -30,6 +30,10 @@ def environmentProbe(variable) {
         : "-Cmd \"[Environment]::GetEnvironmentVariable('${variable}')\""
 }
 
+def commandProbe(command) {
+    return isUnix() ? command : "-Cmd \"${command}\""
+}
+
 def runContainer(arguments, environment = [], config = null) {
     def environmentArguments = environment.collect { "--env ${it}" }.join(' ')
     def containerId = execStdout("docker create ${environmentArguments} ${candidateImage()} ${arguments}").trim()
@@ -130,17 +134,17 @@ selected:
 
 def testImage() {
     testEntrypoint()
-    dir(pwd(tmp: true)) {
-        writeFile file: '.docker-workflow', text: ''
-    }
-    docker.image(candidateImage()).inside("--entrypoint=''") {
-        exec 'docker --version'
-        exec 'git --version'
-        exec 'cm version'
-        exec 'pwsh --version'
-        exec 'node --version'
-        exec 'npm --version'
-        exec 'npx -y hello Faulo'
+    [
+        'docker --version',
+        'git --version',
+        'cm version',
+        'pwsh --version',
+        'node --version',
+        'npm --version',
+        'npx -y hello Faulo'
+    ].each { command ->
+        def result = runContainer(commandProbe(command))
+        assertValue(result.exitCode, '0', "${command} exit code")
     }
 }
 
