@@ -30,13 +30,10 @@ def environmentProbe(variable) {
         : "-Cmd \"[Environment]::GetEnvironmentVariable('${variable}')\""
 }
 
-def commandProbe(command) {
-    return isUnix() ? command : "-Cmd \"${command}\""
-}
-
-def runContainer(arguments, environment = [], config = null) {
+def runContainer(arguments, environment = [], config = null, inheritEntrypoint = true) {
     def environmentArguments = environment.collect { "--env ${it}" }.join(' ')
-    def containerId = execStdout("docker create ${environmentArguments} ${candidateImage()} ${arguments}").trim()
+    def entrypointArgument = inheritEntrypoint ? '' : '--entrypoint=""'
+    def containerId = execStdout("docker create ${entrypointArgument} ${environmentArguments} ${candidateImage()} ${arguments}").trim()
     try {
         if (config != null) {
             writeFile file: 'jenkins-agent-test.yml', text: config
@@ -134,17 +131,19 @@ selected:
 
 def testImage() {
     testEntrypoint()
-    [
-        'docker --version',
-        'git --version',
-        'cm version',
-        'pwsh --version',
-        'node --version',
-        'npm --version',
-        'npx -y hello Faulo'
-    ].each { command ->
-        def result = runContainer(commandProbe(command))
-        assertValue(result.exitCode, '0', "${command} exit code")
+    def probes = [
+        [command: 'docker --version', expected: 'Docker version 29.'],
+        [command: 'git --version', expected: 'git version'],
+        [command: 'cm version', expected: '11.'],
+        [command: 'pwsh --version', expected: 'PowerShell 7.'],
+        [command: 'node --version', expected: 'v24.'],
+        [command: 'npm --version', expected: '.'],
+        [command: 'npx -y hello Faulo', expected: 'Hello']
+    ]
+    probes.each { probe ->
+        def result = runContainer(probe.command, [], null, false)
+        assertValue(result.exitCode, '0', "${probe.command} exit code")
+        assertContains(result.logs, probe.expected, probe.command)
     }
 }
 
