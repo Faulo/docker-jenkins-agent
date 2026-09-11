@@ -275,6 +275,14 @@ def testLiveHealth() {
         def healthCommand = isUnix()
             ? "java -jar /jenkins/launcher.jar --health"
             : "java.exe -jar C:/jenkins/launcher.jar --health"
+        def graceExitCode = '1'
+        for (int attempt = 0; attempt < 20 && graceExitCode != '0'; attempt++) {
+            graceExitCode = execStatus("docker exec ${containerId} ${healthCommand}").toString()
+            if (graceExitCode != '0') {
+                sleep time: 1, unit: 'SECONDS'
+            }
+        }
+        assertValue(graceExitCode, '0', 'starting agent health exit code during grace')
         def jarCommand = isUnix()
             ? "test -f /jenkins/agent.jar"
             : "powershell.exe -NoProfile -Command \"if (-not (Test-Path -LiteralPath C:/jenkins/agent.jar)) { exit 1 }\""
@@ -297,14 +305,6 @@ def testLiveHealth() {
             'true',
             'reconnecting agent process remains running'
         )
-        def graceExitCode = '1'
-        for (int attempt = 0; attempt < 20 && graceExitCode != '0'; attempt++) {
-            graceExitCode = execStatus("docker exec ${containerId} ${healthCommand}").toString()
-            if (graceExitCode != '0') {
-                sleep time: 1, unit: 'SECONDS'
-            }
-        }
-        assertValue(graceExitCode, '0', 'starting agent health exit code during grace')
         sleep time: 11, unit: 'SECONDS'
         assertValue(
             execStatus("docker exec ${containerId} ${healthCommand}").toString(),
