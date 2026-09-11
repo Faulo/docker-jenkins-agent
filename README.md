@@ -93,7 +93,9 @@ default configuration, local builds are tagged as
 
 Both Dockerfiles compile and test the Maven project in `src/` before assembling
 the runtime image. Opening the repository root as a Maven project in IntelliJ
-uses Java 21 and the checked-in `pom.xml` directly.
+uses Java 21 and the checked-in `pom.xml` directly. The launcher uses the Java
+package `net.slothsoft.jenkins.agentlauncher` and Maven coordinates
+`net.slothsoft.jenkins:agent-launcher`.
 
 Build directly from the repository root:
 
@@ -102,12 +104,14 @@ docker --context linux build --tag tmp/jenkins-agent:latest --file linux/Dockerf
 docker --context windows build --tag tmp/jenkins-agent:latest --file windows/Dockerfile .
 ```
 
-The Windows Dockerfile defaults to LTSC 2019. Build either Windows variant
-explicitly with its matching image tag and `OS_BASE` build argument:
+The Windows Dockerfile uses an Eclipse Temurin Java 21 build stage and the
+checked-in Maven Wrapper, without installing Chocolatey in the builder. It
+defaults to an `1809` builder for the LTSC 2019 runtime. Build either Windows
+variant explicitly with its matching image tag and build arguments:
 
 ```text
-docker --context windows build --build-arg OS_BASE=ltsc2019 --tag tmp/jenkins-agent:ltsc2019 --file windows/Dockerfile .
-docker --context windows build --build-arg OS_BASE=ltsc2022 --tag tmp/jenkins-agent:ltsc2022 --file windows/Dockerfile .
+docker --context windows build --build-arg OS_BASE=ltsc2019 --build-arg BUILD_OS_BASE=1809 --tag tmp/jenkins-agent:ltsc2019 --file windows/Dockerfile .
+docker --context windows build --build-arg OS_BASE=ltsc2022 --build-arg BUILD_OS_BASE=ltsc2022 --tag tmp/jenkins-agent:ltsc2022 --file windows/Dockerfile .
 ```
 
 On Windows, the following interactive entry points provide the same builds and
@@ -261,23 +265,27 @@ workspace persistence or host access is required.
 Both variants use `java -jar /jenkins/launcher.jar --health` (with the
 corresponding `C:/jenkins` path on Windows) as their Docker health check. The
 same JAR is loaded as a Java agent inside the Remoting process, where it
-monitors the active channel and performs a round trip to the controller every
-10 seconds. It writes an atomic status record that the Java probe validates
-against the Remoting process and a 30-second freshness limit. The probe does
-not open an additional controller connection.
+attaches a listener to Remoting's engine. Typed disconnect, reconnect, error,
+and completion callbacks drive the state machine; the deliberately narrow
+`Connected` status signal confirms a successful connection. A non-blocking
+active-channel observation remains as a compatibility fallback. Unknown status
+texts and callbacks are ignored.
 
-Only a fresh successful round trip is healthy. Startup, a channel that has not
-yet completed its first round trip, and every reconnect state are unhealthy.
-Docker's 30-second start period and three consecutive retries provide the grace
-period for normal startup and brief controller interruptions. A persistent
-reconnect loop therefore changes the container's visible health state to
-`unhealthy` while the Remoting process continues trying to reconnect.
+The observer writes an atomic local status record. The short-lived Java health
+probe only validates that cached record against the Remoting process and a
+30-second freshness limit; it neither opens a controller connection nor queues
+work on the Remoting channel. A confirmed connection remains healthy without
+periodic round trips. Startup and reconnecting states remain healthy for a
+five-minute grace period, then become unhealthy while Remoting continues its
+own reconnect attempts. A fatal Remoting error or completed engine is an
+immediate hard failure. Repeated reconnect callbacks do not restart the grace
+period.
 
 `JENKINS_HEALTH_INTERVAL_SECONDS`, `JENKINS_HEALTH_TIMEOUT_SECONDS`, and
-`JENKINS_HEALTH_STALE_SECONDS` override the 10-second interval, 5-second round
-trip timeout, and 30-second freshness limit. All must be positive integer
-seconds. `JENKINS_HEALTH_FILE` overrides the platform-specific status path,
-primarily for diagnostics.
+`JENKINS_HEALTH_STALE_SECONDS` override the 10-second observation interval,
+300-second startup/reconnect grace period, and 30-second status freshness
+limit. All must be positive integer seconds. `JENKINS_HEALTH_FILE` overrides
+the platform-specific status path, primarily for diagnostics.
 
 ## Runtime defaults and security
 

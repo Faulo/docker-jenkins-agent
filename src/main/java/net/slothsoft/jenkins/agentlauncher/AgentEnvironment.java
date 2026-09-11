@@ -1,4 +1,4 @@
-package io.github.faulo.jenkins.agent;
+package net.slothsoft.jenkins.agentlauncher;
 
 import java.util.List;
 import java.util.Locale;

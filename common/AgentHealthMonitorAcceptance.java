@@ -59,7 +59,10 @@ public final class AgentHealthMonitorAcceptance {
 
     private static void assertLauncherContract() throws Exception {
         boolean windows = System.getProperty("os.name").startsWith("Windows");
-        Path launcher = Path.of(windows ? "C:/jenkins/launcher.jar" : "/jenkins/launcher.jar");
+        String configuredLauncher = System.getenv("JENKINS_LAUNCHER_FILE");
+        Path launcher = Path.of(configuredLauncher == null || configuredLauncher.isBlank()
+            ? windows ? "C:/jenkins/launcher.jar" : "/jenkins/launcher.jar"
+            : configuredLauncher);
         try (var jar = new JarFile(launcher.toFile())) {
             Attributes attributes = jar.getManifest().getMainAttributes();
             assertValue(
@@ -108,7 +111,10 @@ public final class AgentHealthMonitorAcceptance {
     private static void assertHealthProbe(boolean expectedHealthy) throws Exception {
         boolean windows = System.getProperty("os.name").startsWith("Windows");
         String java = windows ? "java.exe" : "java";
-        String launcher = windows ? "C:/jenkins/launcher.jar" : "/jenkins/launcher.jar";
+        String configuredLauncher = System.getenv("JENKINS_LAUNCHER_FILE");
+        String launcher = configuredLauncher == null || configuredLauncher.isBlank()
+            ? windows ? "C:/jenkins/launcher.jar" : "/jenkins/launcher.jar"
+            : configuredLauncher;
         Process process = new ProcessBuilder(java, "-jar", launcher, "--health")
             .redirectErrorStream(true)
             .start();

@@ -1,4 +1,4 @@
-package io.github.faulo.jenkins.agent;
+package net.slothsoft.jenkins.agentlauncher;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

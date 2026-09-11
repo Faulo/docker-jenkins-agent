@@ -1,20 +1,18 @@
 ARG OS_BASE=ltsc2019
+ARG BUILD_OS_BASE=1809
 
-FROM mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-${OS_BASE} AS build
+FROM eclipse-temurin:21-jdk-windowsservercore-${BUILD_OS_BASE} AS build
 
 SHELL ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell", "-NonInteractive", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-RUN Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')); \
-    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { throw 'Chocolatey installation failed' }; \
-    choco install microsoft-openjdk-21 maven --yes --no-progress --limit-output; \
-    if ($LASTEXITCODE -notin 0, 1641, 3010) { throw ('Build dependencies failed with exit code {0}' -f $LASTEXITCODE) }
-
 WORKDIR C:/solution
 
+COPY .mvn/ .mvn/
+COPY mvnw.cmd .
 COPY pom.xml .
 COPY src/ src/
 
-RUN mvn.cmd --batch-mode --no-transfer-progress verify; \
+RUN ./mvnw.cmd --batch-mode --no-transfer-progress verify; \
     if ($LASTEXITCODE -ne 0) { throw ('Maven build failed with exit code {0}' -f $LASTEXITCODE) }
 
 FROM mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-${OS_BASE}
