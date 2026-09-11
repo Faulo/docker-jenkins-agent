@@ -365,9 +365,9 @@ def testHealthHook() {
 }
 
 def testImage() {
+    testLiveHealth()
     testEntrypoint()
     testControllerAgent()
-    testLiveHealth()
     testHealthHook()
     def platformContract = isUnix()
         ? runContainer("sh -c '. /etc/os-release && test \"\$VERSION_CODENAME\" = trixie'", [], null, false)
