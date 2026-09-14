@@ -126,21 +126,19 @@ daemon.
 
 ## Test
 
-The root `.env` defines the local image name, test command, shared run options,
-and platform-specific run options. The checked-in test currently verifies that
-Java starts successfully and reports its version. The shared test runner
-executes the command through the platform's shell so the same command works
-with both upstream agent entrypoints.
+The Pester integration suite verifies the image's platform, tools, runtime
+user, entrypoint configuration, controller-supplied Remoting JAR, and health
+monitor contract. Set `JENKINS_URL` to the Jenkins controller whose Remoting
+JAR should be tested, then run the suite against either Docker context:
 
-Run the configured test through:
+```powershell
+$env:JENKINS_URL = 'https://jenkins.example/'
+pwsh ./.jenkins/Invoke-IntegrationTests.ps1 -Pull -Context linux
+pwsh ./.jenkins/Invoke-IntegrationTests.ps1 -Pull -Context windows
+```
 
-- `docker-test-linux.bat`
-- `docker-test-windows.bat`
-
-The shared `docker-test.bat` script also accepts `linux` or `windows` as its
-first argument. The platform-specific run options are where the Docker socket
-or named pipe and any required environment are supplied.
-
+The root `.env` defines the image name and optional platform-specific Docker
+run arguments. Use `-Namespace tmp` to test locally built candidate images.
 Do not commit credentials to `.env`. Treat access to a host Docker socket or
 named pipe as privileged access to that Docker daemon.
 
