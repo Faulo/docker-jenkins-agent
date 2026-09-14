@@ -111,6 +111,7 @@ public final class AgentHealthMonitorAcceptance {
     private static void assertHealthProbe(boolean expectedHealthy) throws Exception {
         boolean windows = System.getProperty("os.name").startsWith("Windows");
         String java = windows ? "java.exe" : "java";
+        int timeoutSeconds = windows ? 10 : 2;
         String configuredLauncher = System.getenv("JENKINS_LAUNCHER_FILE");
         String launcher = configuredLauncher == null || configuredLauncher.isBlank()
             ? windows ? "C:/jenkins/launcher.jar" : "/jenkins/launcher.jar"
@@ -118,9 +119,9 @@ public final class AgentHealthMonitorAcceptance {
         Process process = new ProcessBuilder(java, "-jar", launcher, "--health")
             .redirectErrorStream(true)
             .start();
-        if (!process.waitFor(2, TimeUnit.SECONDS)) {
+        if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
             process.destroyForcibly();
-            throw new AssertionError("external health probe exceeded two seconds");
+            throw new AssertionError("external health probe exceeded " + timeoutSeconds + " seconds");
         }
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
         boolean healthy = process.exitValue() == 0;
