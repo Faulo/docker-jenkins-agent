@@ -8,10 +8,6 @@ $RECYCLE.BIN/
 **/bin/
 **/obj/
 
-# == Java ==
-**/target/
-out/
-
 # == DevOps ==
 .git/
 .github/
@@ -19,3 +15,4 @@ out/
 .idea/
 .settings/
 .ai/
+.reports/
