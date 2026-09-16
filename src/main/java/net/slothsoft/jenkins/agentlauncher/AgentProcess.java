@@ -26,11 +26,6 @@ final class AgentProcess {
 
     static int run(List<String> arguments, Map<String, String> environment, Path baseDirectory)
         throws IOException, InterruptedException {
-        ProcessBuilder alternate = alternateProcess(arguments, isWindows());
-        if (alternate != null) {
-            return runProcess(alternate, environment);
-        }
-
         AgentEnvironment.normalize(arguments, environment);
         Path agentJar = AgentJar.destination(baseDirectory);
         AgentJar.install(environment.get(AgentJar.JENKINS_URL), agentJar);
@@ -79,16 +74,6 @@ final class AgentProcess {
         addOptions(command, REMOTING_OPTS, environment.get(REMOTING_OPTS));
         command.addAll(arguments);
         return new ProcessBuilder(command);
-    }
-
-    static ProcessBuilder alternateProcess(List<String> arguments, boolean windows) {
-        if (!windows && arguments.size() == 1 && !arguments.getFirst().startsWith("-")) {
-            return new ProcessBuilder(arguments.getFirst());
-        }
-        if (windows && arguments.size() == 2 && "-Cmd".equalsIgnoreCase(arguments.getFirst())) {
-            return new ProcessBuilder("powershell.exe", "-NoProfile", "-Command", arguments.get(1));
-        }
-        return null;
     }
 
     private static int runProcess(ProcessBuilder builder, Map<String, String> environment)

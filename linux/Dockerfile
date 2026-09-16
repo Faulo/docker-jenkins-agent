@@ -68,6 +68,7 @@ VOLUME ["/jenkins/workspace"]
 COPY --from=build --chmod=644 /solution/target/launcher.jar /jenkins/launcher.jar
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD ["java", "-jar", "/jenkins/launcher.jar", "--health"]
+    CMD ["java", "-jar", "/jenkins/launcher.jar", "health"]
 
 ENTRYPOINT ["java", "-jar", "/jenkins/launcher.jar"]
+CMD ["serve"]

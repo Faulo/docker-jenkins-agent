@@ -16,11 +16,16 @@ keeps Remoting aligned with the controller instead of the image's build date.
 The download is validated and installed atomically. Startup fails if the
 controller URL is missing, invalid, or does not return a JAR.
 
-The image is intended for Jenkins jobs that need Git, Unity Version Control
-(the `cm` command), Node.js, PowerShell, and access to a Docker daemon supplied
-by the host. This includes Jenkinsfiles that use the Docker Pipeline plugin's
-`docker.image("image").inside { ... }` syntax. The image contains only the
-Docker client; it does not contain or run a Docker daemon.
+The image is a dedicated Jenkins inbound-agent appliance. Jobs running on that
+agent can use Git, Unity Version Control (the `cm` command), Node.js,
+PowerShell, and a Docker daemon supplied by the host. The image contains only
+the Docker client; it does not contain or run a Docker daemon.
+
+Do not use this appliance image as the build environment passed to the Docker
+Pipeline plugin's `docker.image("image").inside { ... }` API. That API replaces
+the image command to start a temporary build container, while this image keeps
+its launcher fixed as `ENTRYPOINT`. Use a separate tool image as the body of
+`inside {}`; jobs running on this agent may still create those containers.
 
 ## Image variants
 
@@ -43,9 +48,8 @@ Both variants provide the same agent-level capabilities:
 | PowerShell (`pwsh`) | Yes | Yes |
 | Indexed YAML agent configuration | Yes | Yes |
 
-Docker Compose is intentionally not installed. The Jenkins Docker Pipeline
-plugin uses the Docker CLI directly and does not require Compose for
-`docker.image(...).inside { ... }`.
+Docker Compose is intentionally not installed. Jenkins jobs use the Docker CLI
+directly when they create build containers.
 
 Both Dockerfiles follow Java major version 21. Every other tool follows the
 newest package available from its configured APT or Chocolatey source at build
@@ -144,6 +148,12 @@ named pipe as privileged access to that Docker daemon.
 
 ## Use with Jenkins
 
+Both platforms use an exec-form appliance contract. `ENTRYPOINT` is fixed to
+`java -jar` plus the platform launcher path, while `CMD` contains only the
+default `serve` launcher command. Docker command arguments and Compose
+`command:` replace `CMD` but remain arguments to the launcher. They cannot
+replace the launcher itself.
+
 The command can be omitted when the controller URL, agent secret, and agent
 name are supplied as environment variables:
 
@@ -168,6 +178,16 @@ services:
     environment:
       JENKINS_URL: http://jenkins:8080/
     command: ["-url", "http://jenkins:8080", "-secret", "xxx", "-name", "yyy", "-webSocket"]
+```
+
+The explicit `serve` command accepts the same arguments, for example
+`command: ["serve", "-url", "http://jenkins:8080", ...]`. Use Docker's
+`--entrypoint` option when diagnostics intentionally need to bypass the
+appliance launcher:
+
+```text
+docker run --rm --entrypoint /bin/sh faulo/jenkins-agent:latest -c "java -version"
+docker run --rm --entrypoint powershell.exe faulo/jenkins-agent:latest-ltsc2019 -NoProfile -Command "java -version"
 ```
 
 `JENKINS_WEB_SOCKET` defaults to `true`. It accepts `1` or `true` to enable
@@ -241,10 +261,11 @@ In addition to the Jenkins connection settings, mount the platform's Docker
 endpoint if jobs need to invoke Docker. Any job using this image can then use
 the host daemon through the included Docker CLI.
 
-For `docker.image(...).inside { ... }`, the Jenkins agent and Docker daemon
-must also see the same workspace filesystem. Jenkins detects that the agent is
-running in a container and uses `--volumes-from` to share its workspace with
-the nested build container.
+When a job running on this appliance uses a separate image through
+`docker.image(...).inside { ... }`, the Jenkins agent and Docker daemon must see
+the same workspace filesystem. Jenkins detects that the agent is running in a
+container and uses `--volumes-from` to share its workspace with that nested
+build container.
 
 Configure the Jenkins node's **Remote root directory** to match the image:
 
@@ -260,7 +281,7 @@ workspace persistence or host access is required.
 
 ## Health check
 
-Both variants use `java -jar /jenkins/launcher.jar --health` (with the
+Both variants use `java -jar /jenkins/launcher.jar health` (with the
 corresponding `C:/jenkins` path on Windows) as their Docker health check. The
 same JAR is loaded as a Java agent inside the Remoting process, where it
 attaches a listener to Remoting's engine. Typed disconnect, reconnect, error,

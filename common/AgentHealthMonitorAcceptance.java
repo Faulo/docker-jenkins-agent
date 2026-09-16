@@ -116,9 +116,10 @@ public final class AgentHealthMonitorAcceptance {
         String launcher = configuredLauncher == null || configuredLauncher.isBlank()
             ? windows ? "C:/jenkins/launcher.jar" : "/jenkins/launcher.jar"
             : configuredLauncher;
-        Process process = new ProcessBuilder(java, "-jar", launcher, "--health")
-            .redirectErrorStream(true)
-            .start();
+        ProcessBuilder builder = new ProcessBuilder(java, "-jar", launcher, "health")
+            .redirectErrorStream(true);
+        builder.environment().remove("JENKINS_URL");
+        Process process = builder.start();
         if (!process.waitFor(HEALTH_PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly();
             throw new AssertionError(

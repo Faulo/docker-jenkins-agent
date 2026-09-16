@@ -55,6 +55,11 @@ BeforeAll {
         throw 'JENKINS_URL is required for Jenkins agent integration tests'
     }
 
+    $launcherPath = $Os -eq 'windows' ? 'C:/jenkins/launcher.jar' : '/jenkins/launcher.jar'
+    $expectedEntrypoint = @('java', '-jar', $launcherPath)
+    $expectedCommand = @('serve')
+    $expectedHealthcheck = @('CMD', 'java', '-jar', $launcherPath, 'health')
+
     function New-TestResourceName {
         param(
             [Parameter(Mandatory)]
@@ -130,6 +135,8 @@ BeforeAll {
 
             [switch] $WithoutEntrypoint,
 
+            [string] $Entrypoint,
+
             [switch] $JavaProbe,
 
             [int] $TimeoutSeconds = 120
@@ -142,6 +149,8 @@ BeforeAll {
         $arguments += $DockerRunArguments
         if ($WithoutEntrypoint) {
             $arguments += '--entrypoint='
+        } elseif ($PSBoundParameters.ContainsKey('Entrypoint')) {
+            $arguments += @('--entrypoint', $Entrypoint)
         }
         foreach ($entry in $Environment) {
             $arguments += @('--env', $entry)
@@ -185,6 +194,10 @@ BeforeAll {
     }
 
     function Get-WebSocketEnvironment {
+        param(
+            [string] $AgentName = 'argument-probe'
+        )
+
         $java = if ($Os -eq 'windows') {
             'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
         } else {
@@ -193,7 +206,7 @@ BeforeAll {
         $environment = @(
             "JENKINS_URL=$jenkinsUrl"
             'JENKINS_SECRET=not-a-secret'
-            'JENKINS_AGENT_NAME=argument-probe'
+            "JENKINS_AGENT_NAME=$AgentName"
             "JENKINS_JAVA_BIN=$java"
         )
         if ($Os -eq 'windows') {
@@ -244,6 +257,33 @@ RUN curl.exe -fsSL (`$env:JENKINS_URL.TrimEnd('/') + '/jnlpJars/agent.jar') -o C
 }
 
 Describe "Jenkins agent entrypoint [$Os, $Image]" {
+    It 'declares the fixed appliance launcher' {
+        $actual = Invoke-DockerOutput -Context $Context -Arguments @(
+            'image', 'inspect', '--format', '{{json .Config.Entrypoint}}', $Image
+        ) | ConvertFrom-Json
+
+        ($actual -join "`n") | Should -Be ($expectedEntrypoint -join "`n")
+    }
+
+    It 'declares only the default serve argument in Cmd' {
+        $actual = Invoke-DockerOutput -Context $Context -Arguments @(
+            'image', 'inspect', '--format', '{{json .Config.Cmd}}', $Image
+        ) | ConvertFrom-Json
+
+        ($actual -join "`n") | Should -Be ($expectedCommand -join "`n")
+        $actual | Should -Not -Contain 'java'
+        $actual | Should -Not -Contain 'java.exe'
+        $actual | Should -Not -Contain $launcherPath
+    }
+
+    It 'declares the standalone launcher health probe' {
+        $actual = Invoke-DockerOutput -Context $Context -Arguments @(
+            'image', 'inspect', '--format', '{{json .Config.Healthcheck.Test}}', $Image
+        ) | ConvertFrom-Json
+
+        ($actual -join "`n") | Should -Be ($expectedHealthcheck -join "`n")
+    }
+
     It 'handles the <Description> WebSocket value' -ForEach $webSocketCases {
         $environment = @(Get-WebSocketEnvironment)
         if ($null -ne $Value) {
@@ -288,18 +328,43 @@ Describe "Jenkins agent entrypoint [$Os, $Image]" {
         ([regex]::Matches($result.Output, [regex]::Escape('-webSocket'))).Count | Should -Be 1
     }
 
-    It 'applies the selected indexed environment over the direct environment' {
-        $configPath = $Os -eq 'windows' ? 'C:/jenkins-agent-test.yml' : '/tmp/jenkins-agent-test.yml'
+    It 'does not execute command arguments as an alternate process' {
         $command = if ($Os -eq 'windows') {
-            @('-Cmd', "[Environment]::GetEnvironmentVariable('JENKINS_AGENT_NAME')")
+            @('-Cmd', "Write-Output 'implicit-entrypoint-bypass'")
         } else {
             @('env')
         }
-        $result = Invoke-JenkinsContainer -Command $command -Environment @(
+        $result = Invoke-JenkinsContainer `
+            -Command $command `
+            -Environment @('IMPLICIT_ENTRYPOINT_BYPASS=implicit-entrypoint-bypass')
+
+        $result.ExitCode | Should -Be 1
+        $result.Output | Should -Not -Match 'IMPLICIT_ENTRYPOINT_BYPASS='
+    }
+
+    It 'allows an explicit entrypoint override for diagnostics' {
+        $entrypoint = $Os -eq 'windows' ? 'powershell.exe' : '/bin/sh'
+        $command = if ($Os -eq 'windows') {
+            @('-NoProfile', '-Command', "Write-Output 'explicit-entrypoint-bypass'")
+        } else {
+            @('-c', 'echo explicit-entrypoint-bypass')
+        }
+        $result = Invoke-JenkinsContainer -Entrypoint $entrypoint -Command $command
+
+        $result.ExitCode | Should -Be 0
+        $result.Output.Trim() | Should -Be 'explicit-entrypoint-bypass'
+    }
+
+    It 'applies the selected indexed environment over the direct environment' {
+        $configPath = $Os -eq 'windows' ? 'C:/jenkins-agent-test.yml' : '/tmp/jenkins-agent-test.yml'
+        $environment = @(Get-WebSocketEnvironment -AgentName 'from-environment') + @(
             "JENKINS_CONFIG_FILE=$configPath"
             'JENKINS_CONFIG_INDEX=selected'
-            'JENKINS_AGENT_NAME=from-environment'
-        ) -Config @'
+        )
+        $result = Invoke-JenkinsContainer `
+            -Environment $environment `
+            -JavaProbe:($Os -eq 'windows') `
+            -Config @'
 other:
   JENKINS_AGENT_NAME: from-other-index
 selected:
@@ -312,14 +377,9 @@ selected:
     }
 
     It 'preserves the direct environment without indexed configuration' {
-        $command = if ($Os -eq 'windows') {
-            @('-Cmd', "[Environment]::GetEnvironmentVariable('JENKINS_AGENT_NAME')")
-        } else {
-            @('env')
-        }
         $result = Invoke-JenkinsContainer `
-            -Command $command `
-            -Environment @('JENKINS_AGENT_NAME=from-direct-environment')
+            -Environment @(Get-WebSocketEnvironment -AgentName 'from-direct-environment') `
+            -JavaProbe:($Os -eq 'windows')
 
         $result.ExitCode | Should -Be 0
         $result.Output | Should -Match 'from-direct-environment'
@@ -327,7 +387,7 @@ selected:
 
     It 'rejects a missing configuration index without leaking values' {
         $configPath = $Os -eq 'windows' ? 'C:/jenkins-agent-test.yml' : '/tmp/jenkins-agent-test.yml'
-        $result = Invoke-JenkinsContainer -Command @('--health') -Environment @(
+        $result = Invoke-JenkinsContainer -Command @('health') -Environment @(
             "JENKINS_CONFIG_FILE=$configPath"
             'JENKINS_CONFIG_INDEX=missing'
         ) -Config @'
@@ -342,7 +402,7 @@ selected:
 
     It 'rejects malformed YAML without leaking values' {
         $configPath = $Os -eq 'windows' ? 'C:/jenkins-agent-test.yml' : '/tmp/jenkins-agent-test.yml'
-        $result = Invoke-JenkinsContainer -Command @('--health') -Environment @(
+        $result = Invoke-JenkinsContainer -Command @('health') -Environment @(
             "JENKINS_CONFIG_FILE=$configPath"
             'JENKINS_CONFIG_INDEX=selected'
         ) -Config @'
@@ -357,7 +417,7 @@ selected: [
 
     It 'rejects a non-mapping configuration value without leaking it' {
         $configPath = $Os -eq 'windows' ? 'C:/jenkins-agent-test.yml' : '/tmp/jenkins-agent-test.yml'
-        $result = Invoke-JenkinsContainer -Command @('--health') -Environment @(
+        $result = Invoke-JenkinsContainer -Command @('health') -Environment @(
             "JENKINS_CONFIG_FILE=$configPath"
             'JENKINS_CONFIG_INDEX=selected'
         ) -Config 'selected: highly-sensitive-value'
@@ -370,7 +430,7 @@ selected: [
     It 'requires the configuration file and index as a pair' {
         $configPath = $Os -eq 'windows' ? 'C:/jenkins-agent-test.yml' : '/tmp/jenkins-agent-test.yml'
         $result = Invoke-JenkinsContainer `
-            -Command @('--health') `
+            -Command @('health') `
             -Environment @("JENKINS_CONFIG_FILE=$configPath") `
             -Config @'
 selected:
@@ -383,7 +443,7 @@ selected:
     }
 
     It 'reports unhealthy without a managed agent' {
-        $result = Invoke-JenkinsContainer -Command @('--health')
+        $result = Invoke-JenkinsContainer -Command @('health')
         $result.ExitCode | Should -Be 1
     }
 }
@@ -483,13 +543,13 @@ Describe "Jenkins agent health [$Os, $Image]" {
             Invoke-Docker -Context $Context -Arguments @('container', 'start', $container)
 
             $healthCommand = if ($Os -eq 'windows') {
-                @('java.exe', '-jar', 'C:/jenkins/launcher.jar', '--health')
+                @('java', '-jar', 'C:/jenkins/launcher.jar', 'health')
             } else {
-                @('java', '-jar', '/jenkins/launcher.jar', '--health')
+                @('java', '-jar', '/jenkins/launcher.jar', 'health')
             }
             $healthExitCode = 1
             for ($attempt = 0; $attempt -lt 20 -and $healthExitCode -ne 0; $attempt++) {
-                $execArguments = @('container', 'exec', $container) + $healthCommand
+                $execArguments = @('container', 'exec', '--env', 'JENKINS_URL=', $container) + $healthCommand
                 $healthExitCode = (Get-DockerCommandResult -Context $Context -Arguments $execArguments).ExitCode
                 if ($healthExitCode -ne 0) {
                     Start-Sleep -Seconds 1
