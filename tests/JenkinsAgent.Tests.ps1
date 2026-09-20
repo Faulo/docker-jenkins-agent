@@ -40,11 +40,13 @@ BeforeDiscovery {
         @{ Command = @('git', '--version'); Expected = 'git version' }
         @{ Command = @('git', 'lfs', 'version'); Expected = 'git-lfs/' }
         @{ Command = @('cm', 'version'); Expected = '.' }
-        @{ Command = @('pwsh', '--version'); Expected = 'PowerShell ' }
         @{ Command = @('node', '--version'); Expected = 'v' }
         @{ Command = @('npm', '--version'); Expected = '.' }
         @{ Command = @('npx', '--version'); Expected = '.' }
     )
+    if ($Os -eq 'windows') {
+        $toolProbes += @{ Command = @('pwsh', '--version'); Expected = 'PowerShell ' }
+    }
 }
 
 BeforeAll {

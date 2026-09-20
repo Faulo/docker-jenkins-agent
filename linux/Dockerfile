@@ -18,18 +18,16 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ADD https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb /tmp/packages-microsoft-prod.deb
 ADD https://download.docker.com/linux/debian/gpg /etc/apt/keyrings/docker.asc
 ADD https://deb.nodesource.com/setup_current.x /tmp/nodesource-setup
 
-RUN dpkg -i /tmp/packages-microsoft-prod.deb && \
-    chmod a+r /etc/apt/keyrings/docker.asc && \
+RUN chmod a+r /etc/apt/keyrings/docker.asc && \
     echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian trixie stable' \
       > /etc/apt/sources.list.d/docker.list && \
     echo 'deb [trusted=yes allow-insecure=yes] https://www.plasticscm.com/plasticrepo/stable/debian ./' \
       > /etc/apt/sources.list.d/plasticscm.list && \
     bash /tmp/nodesource-setup && \
-    rm -f /tmp/packages-microsoft-prod.deb /tmp/nodesource-setup
+    rm -f /tmp/nodesource-setup
 
 # Runtime tools
 COPY linux/jenkins-agent.packages /tmp/jenkins-agent.packages
@@ -43,7 +41,6 @@ RUN apt-get update -o Acquire::AllowInsecureRepositories=true && \
     java -version && \
     git --version && \
     git lfs version && \
-    pwsh --version && \
     node --version && \
     npm --version && \
     npx --version && \

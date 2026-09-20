@@ -8,6 +8,7 @@
     <dependencies>
       <dependency id="microsoft-openjdk-21" />
       <dependency id="git" />
+      <dependency id="git-lfs" />
       <dependency id="powershell-core" />
       <dependency id="nodejs" />
       <dependency id="docker-cli" />

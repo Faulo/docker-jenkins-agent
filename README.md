@@ -17,9 +17,10 @@ The download is validated and installed atomically. Startup fails if the
 controller URL is missing, invalid, or does not return a JAR.
 
 The image is a dedicated Jenkins inbound-agent appliance. Jobs running on that
-agent can use Git, Unity Version Control (the `cm` command), Node.js,
-PowerShell, and a Docker daemon supplied by the host. The image contains only
-the Docker client; it does not contain or run a Docker daemon.
+agent can use Git, Unity Version Control (the `cm` command), Node.js, and a
+Docker daemon supplied by the host. Windows agents also include PowerShell.
+The image contains only the Docker client; it does not contain or run a Docker
+daemon.
 
 Do not use this appliance image as the build environment passed to the Docker
 Pipeline plugin's `docker.image("image").inside { ... }` API. That API replaces
@@ -35,7 +36,7 @@ its launcher fixed as `ENTRYPOINT`. Use a separate tool image as the body of
 | Windows LTSC 2019 | `windows/Dockerfile` | `mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-ltsc2019` | `windows` |
 | Windows LTSC 2022 | `windows/Dockerfile` | `mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-ltsc2022` | `windows` |
 
-Both variants provide the same agent-level capabilities:
+The variants provide these agent-level capabilities:
 
 | Capability | Linux | Windows |
 | --- | --- | --- |
@@ -45,7 +46,7 @@ Both variants provide the same agent-level capabilities:
 | Unity Version Control CLI (`cm`) | Core client package | Client installer |
 | Docker CLI | Client binary only | Client binary only |
 | Node.js (`node`, `npm`, and `npx`) | Yes | Yes |
-| PowerShell (`pwsh`) | Yes | Yes |
+| PowerShell (`pwsh`) | No | Yes |
 | Indexed YAML agent configuration | Yes | Yes |
 
 Docker Compose is intentionally not installed. Jenkins jobs use the Docker CLI
@@ -315,7 +316,7 @@ the platform-specific status path, primarily for diagnostics.
 - `JAVA_OPTS` sets the Jenkins Git client operation timeout to 60 minutes.
 - Git treats every repository path as a safe directory. This avoids ownership
   checks for host-mounted workspaces but removes that Git security boundary.
-- Linux consumes signed Debian, Microsoft, Docker, and NodeSource APT
+- Linux consumes signed Debian, Docker, and NodeSource APT
   repositories. Windows consumes the Chocolatey Community Repository for its
   shared tool manifest, while the Unity Version Control installer must have a
   valid Unity Authenticode signature.
