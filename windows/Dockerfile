@@ -14,7 +14,6 @@ RUN $archive = 'C:/temp/temurin-jdk.zip'; \
     $jdk = Get-ChildItem -LiteralPath C:/temp/temurin -Directory | Select-Object -First 1; \
     if (-not $jdk) { throw 'Temurin JDK archive did not contain a root directory' }; \
     Move-Item -Path (Join-Path $jdk.FullName '*') -Destination C:/openjdk-25; \
-    Remove-Item -Recurse -Force C:/temp; \
     C:/openjdk-25/bin/java.exe -version; \
     if ($LASTEXITCODE -ne 0) { throw 'Temurin Java 25 build runtime failed' }
 
