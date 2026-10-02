@@ -2,7 +2,7 @@ curl
 docker-ce-cli
 git
 git-lfs
-openjdk-21-jdk-headless
+openjdk-25-jre-headless
 nodejs
 plasticscm-client-core
 powershell

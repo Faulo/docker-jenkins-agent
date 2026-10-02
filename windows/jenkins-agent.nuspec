@@ -6,7 +6,7 @@
     <authors>Daniel Schulz</authors>
     <description>Windows tools required by the Jenkins agent image.</description>
     <dependencies>
-      <dependency id="microsoft-openjdk-21" />
+      <dependency id="Temurinjre" version="[25.0.0,26.0.0)" />
       <dependency id="git" />
       <dependency id="git-lfs" />
       <dependency id="powershell-core" />

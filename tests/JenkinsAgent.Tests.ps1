@@ -218,13 +218,21 @@ BeforeAll {
     function Get-HealthAcceptanceDockerfile {
         if ($Os -eq 'linux') {
             return @"
-FROM $Image
+FROM $Image AS agent-runtime
 ARG JENKINS_URL
+RUN mkdir -p /tmp/agent-health-test && \
+    curl -fsSL "`${JENKINS_URL%/}/jnlpJars/agent.jar" -o /tmp/agent-health-test/agent.jar
+
+FROM maven:3-eclipse-temurin-25 AS acceptance-build
+COPY --from=agent-runtime /tmp/agent-health-test/agent.jar /tmp/agent-health-test/agent.jar
 COPY common/AgentHealthMonitorAcceptance.java /tmp/agent-health-test/AgentHealthMonitorAcceptance.java
-RUN curl -fsSL "`${JENKINS_URL%/}/jnlpJars/agent.jar" -o /tmp/agent-health-test/agent.jar && \
-    mkdir -p /tmp/agent-health-test/classes && \
-    javac -cp /tmp/agent-health-test/agent.jar \
-      -d /tmp/agent-health-test/classes /tmp/agent-health-test/AgentHealthMonitorAcceptance.java && \
+RUN mkdir -p /tmp/agent-health-test/classes && \
+    javac --release 25 -cp /tmp/agent-health-test/agent.jar \
+      -d /tmp/agent-health-test/classes /tmp/agent-health-test/AgentHealthMonitorAcceptance.java
+
+FROM agent-runtime
+COPY --from=acceptance-build /tmp/agent-health-test/classes /tmp/agent-health-test/classes
+RUN \
     JENKINS_HEALTH_FILE=/tmp/agent-health-test.status \
     JENKINS_HEALTH_INTERVAL_SECONDS=1 \
     JENKINS_HEALTH_TIMEOUT_SECONDS=2 \
@@ -237,15 +245,26 @@ RUN curl -fsSL "`${JENKINS_URL%/}/jnlpJars/agent.jar" -o /tmp/agent-health-test/
 
         return @"
 # escape=``
-FROM $Image
+FROM $Image AS agent-runtime
 SHELL ["C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell", "-NonInteractive", "-NoProfile", "-Command", "`$ErrorActionPreference = 'Stop'; `$ProgressPreference = 'SilentlyContinue';"]
 ARG JENKINS_URL
+RUN New-Item -ItemType Directory -Path C:/agent-health-test -Force | Out-Null; ``
+    curl.exe -fsSL (`$env:JENKINS_URL.TrimEnd('/') + '/jnlpJars/agent.jar') -o C:/agent-health-test/agent.jar; ``
+    if (`$LASTEXITCODE -ne 0) { throw 'Failed to download controller agent JAR' }
+
+FROM agent-runtime AS acceptance-build
+RUN choco install Temurin25 --yes --no-progress --limit-output --source 'https://community.chocolatey.org/api/v2/'; ``
+    if (`$LASTEXITCODE -notin 0, 1641, 3010) { throw 'Failed to install acceptance-test JDK' }
 COPY common/AgentHealthMonitorAcceptance.java C:/agent-health-test/AgentHealthMonitorAcceptance.java
-RUN curl.exe -fsSL (`$env:JENKINS_URL.TrimEnd('/') + '/jnlpJars/agent.jar') -o C:/agent-health-test/agent.jar; ``
-    if (`$LASTEXITCODE -ne 0) { throw 'Failed to download controller agent JAR' }; ``
+RUN `$javac = Get-ChildItem 'C:/Program Files/Eclipse Adoptium' -Filter javac.exe -File -Recurse | Select-Object -First 1; ``
+    if (-not `$javac) { throw 'Acceptance-test compiler was not found' }; ``
     New-Item -ItemType Directory -Path C:/agent-health-test/classes -Force | Out-Null; ``
-    javac.exe -cp C:/agent-health-test/agent.jar -d C:/agent-health-test/classes C:/agent-health-test/AgentHealthMonitorAcceptance.java; ``
-    if (`$LASTEXITCODE -ne 0) { throw 'Failed to compile health acceptance test' }; ``
+    & `$javac.FullName --release 25 -cp C:/agent-health-test/agent.jar -d C:/agent-health-test/classes C:/agent-health-test/AgentHealthMonitorAcceptance.java; ``
+    if (`$LASTEXITCODE -ne 0) { throw 'Failed to compile health acceptance test' }
+
+FROM agent-runtime
+COPY --from=acceptance-build C:/agent-health-test/classes C:/agent-health-test/classes
+RUN ``
     `$env:JENKINS_HEALTH_FILE = 'C:/agent-health-test.status'; ``
     `$env:JENKINS_HEALTH_INTERVAL_SECONDS = '1'; ``
     `$env:JENKINS_HEALTH_TIMEOUT_SECONDS = '2'; ``
@@ -449,6 +468,23 @@ selected:
 }
 
 Describe "Jenkins agent runtime [$Os, $Image]" {
+    It 'provides a Java 25 runtime without JDK tooling' {
+        $command = if ($Os -eq 'windows') {
+            @(
+                'powershell.exe', '-NoProfile', '-Command',
+                'if (-not $env:JAVA_HOME -or -not (Test-Path -LiteralPath $env:JAVA_HOME) -or (Get-Command javac.exe -ErrorAction SilentlyContinue)) { exit 1 }; $version = java.exe -version 2>&1 | Out-String; if ($version -notmatch ''version "25[.]'') { exit 1 }; exit 0'
+            )
+        } else {
+            @(
+                'sh', '-c',
+                'test -n "$JAVA_HOME" && test -d "$JAVA_HOME" && ! command -v javac >/dev/null 2>&1 && java -version 2>&1 | grep -Eq ''version "25[.]'''
+            )
+        }
+        $result = Invoke-JenkinsContainer -Command $command -WithoutEntrypoint
+
+        $result.ExitCode | Should -Be 0
+    }
+
     It 'downloads the controller agent version' {
         $agentJar = Join-Path ([IO.Path]::GetTempPath()) "$(New-TestResourceName -Prefix 'controller-agent').jar"
         try {

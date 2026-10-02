@@ -61,9 +61,9 @@ final class AgentProcessTest {
 
     @Test
     void javaHomeAndPlatformSelectExecutable() {
-        Map<String, String> environment = new HashMap<>(Map.of("JAVA_HOME", "C:/openjdk-21/"));
+        Map<String, String> environment = new HashMap<>(Map.of("JAVA_HOME", "C:/openjdk-25/"));
         List<String> command = AgentProcess.javaProcess(new ArrayList<>(), environment, true,
             Path.of("C:/jenkins/agent.jar"), Path.of("C:/jenkins/launcher.jar")).command();
-        assertEquals("C:/openjdk-21/bin/java.exe", command.getFirst());
+        assertEquals("C:/openjdk-25/bin/java.exe", command.getFirst());
     }
 }

@@ -5,6 +5,16 @@ $packageIndex = Join-Path $env:TEMP 'plastic-packages'
 $installer = Join-Path $env:TEMP 'plastic-installer.exe'
 
 try {
+    $java = Get-ChildItem 'C:\Program Files\Eclipse Adoptium' -Filter java.exe -File -Recurse |
+        Where-Object FullName -Match '\\bin\\java\.exe$' |
+        Select-Object -First 1
+    if (-not $java) {
+        throw 'Temurin Java runtime was not found'
+    }
+    $javaHome = Split-Path -Parent (Split-Path -Parent $java.FullName)
+    Install-ChocolateyEnvironmentVariable -VariableName JAVA_HOME -VariableValue $javaHome -VariableType Machine
+    $env:JAVA_HOME = $javaHome
+
     Get-ChocolateyWebFile `
         -PackageName $env:ChocolateyPackageName `
         -FileFullPath $packageIndex `

@@ -1,11 +1,24 @@
 ARG OS_BASE=ltsc2019
 ARG BUILD_OS_BASE=1809
 
-FROM eclipse-temurin:21-jdk-windowsservercore-${BUILD_OS_BASE} AS build
+FROM mcr.microsoft.com/windows/servercore:${BUILD_OS_BASE} AS build
 
 SHELL ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell", "-NonInteractive", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 WORKDIR C:/solution
+
+RUN $archive = 'C:/temp/temurin-jdk.zip'; \
+    New-Item -ItemType Directory -Path C:/temp, C:/openjdk-25 -Force | Out-Null; \
+    Invoke-WebRequest 'https://api.adoptium.net/v3/binary/latest/25/ga/windows/x64/jdk/hotspot/normal/eclipse' -OutFile $archive; \
+    Expand-Archive -LiteralPath $archive -DestinationPath C:/temp/temurin; \
+    $jdk = Get-ChildItem -LiteralPath C:/temp/temurin -Directory | Select-Object -First 1; \
+    if (-not $jdk) { throw 'Temurin JDK archive did not contain a root directory' }; \
+    Move-Item -Path (Join-Path $jdk.FullName '*') -Destination C:/openjdk-25; \
+    Remove-Item -Recurse -Force C:/temp; \
+    C:/openjdk-25/bin/java.exe -version; \
+    if ($LASTEXITCODE -ne 0) { throw 'Temurin Java 25 build runtime failed' }
+
+ENV JAVA_HOME=C:/openjdk-25
 
 COPY .mvn/ .mvn/
 COPY mvnw.cmd .
@@ -33,7 +46,7 @@ RUN choco pack C:/build/jenkins-agent.nuspec --output-directory C:/build --limit
     Remove-Item -Recurse -Force C:/build
 
 RUN java.exe -version; \
-    if ($LASTEXITCODE -ne 0 -or -not $env:JAVA_HOME) { throw 'Java smoke check failed' }; \
+    if ($LASTEXITCODE -ne 0 -or -not $env:JAVA_HOME -or (Get-Command javac.exe -ErrorAction SilentlyContinue)) { throw 'Java runtime smoke check failed' }; \
     git.exe --version; \
     if ($LASTEXITCODE -ne 0) { throw 'Git smoke check failed' }; \
     git.exe lfs version; \

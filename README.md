@@ -3,8 +3,9 @@
 This repository builds Linux and Windows variants of one Docker image for
 Jenkins agents. The Linux variant uses Debian Trixie Slim, and the Windows
 variants use the matching .NET Framework 4.8 Windows Server Core runtime image.
-Linux installs Debian OpenJDK 21, Windows installs Microsoft OpenJDK 21, and
-both install Git with Git LFS. A shared Java entrypoint launches Jenkins
+Linux installs the Debian OpenJDK 25 headless runtime, Windows installs the
+Eclipse Temurin 25 runtime, and both install Git with Git LFS. A shared Java
+entrypoint launches Jenkins
 Remoting directly; the image does not include or call the inbound-agent shell
 or PowerShell launchers. The Windows base remains the .NET Framework runtime
 because Chocolatey requires Windows PowerShell and .NET Framework; the agent
@@ -40,7 +41,7 @@ Both variants provide the same agent-level capabilities:
 | Capability | Linux | Windows |
 | --- | --- | --- |
 | Jenkins Remoting runtime | Downloaded at startup | Downloaded at startup |
-| Java 21 | Yes | Yes |
+| Java 25 runtime | Debian OpenJDK | Eclipse Temurin |
 | Git and Git LFS | Yes | Yes |
 | Unity Version Control CLI (`cm`) | Core client package | Client installer |
 | Docker CLI | Client binary only | Client binary only |
@@ -51,7 +52,9 @@ Both variants provide the same agent-level capabilities:
 Docker Compose is intentionally not installed. Jenkins jobs use the Docker CLI
 directly when they create build containers.
 
-Both Dockerfiles follow Java major version 21. Every other tool follows the
+Both Dockerfiles follow Java major version 25. The runtime images intentionally
+exclude JDK development tools such as `javac`; jobs that compile Java should use
+a dedicated build container. Every other tool follows the
 newest package available from its configured APT or Chocolatey source at build
 time, including major-version upgrades. Linux and Windows versions can differ
 when their package repositories publish on different schedules.
@@ -97,7 +100,7 @@ default configuration, local builds are tagged as
 
 Both Dockerfiles compile and test the Maven project in `src/` before assembling
 the runtime image. Opening the repository root as a Maven project in IntelliJ
-uses Java 21 and the checked-in `pom.xml` directly. The launcher uses the Java
+uses Java 25 and the checked-in `pom.xml` directly. The launcher uses the Java
 package `net.slothsoft.jenkins.agentlauncher` and Maven coordinates
 `net.slothsoft.jenkins:agent-launcher`.
 
@@ -108,9 +111,10 @@ docker --context linux build --tag tmp/jenkins-agent:latest --file linux/Dockerf
 docker --context windows build --tag tmp/jenkins-agent:latest --file windows/Dockerfile .
 ```
 
-The Windows Dockerfile uses an Eclipse Temurin Java 21 build stage and the
-checked-in Maven Wrapper, without installing Chocolatey in the builder. It
-defaults to an `1809` builder for the LTSC 2019 runtime. Build either Windows
+The Windows Dockerfile installs the latest Eclipse Temurin Java 25 JDK in its
+build stage and uses the checked-in Maven Wrapper, without installing
+Chocolatey in the builder. It defaults to an `1809` builder for the LTSC 2019
+runtime. Build either Windows
 variant explicitly with its matching image tag and build arguments:
 
 ```text

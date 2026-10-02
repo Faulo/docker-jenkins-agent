@@ -1,4 +1,4 @@
-FROM maven:3-eclipse-temurin-21 AS build
+FROM maven:3-eclipse-temurin-25 AS build
 
 WORKDIR /solution
 
@@ -55,7 +55,7 @@ USER root
 ENV USER=root \
     HOME=/root \
     LANG=C.UTF-8 \
-    JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+    JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 \
     AGENT_WORKDIR=/jenkins \
     JENKINS_AGENT_WORKDIR=/jenkins \
     JAVA_OPTS="-Dorg.jenkinsci.plugins.gitclient.Git.timeOut=60" \
