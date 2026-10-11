@@ -27,22 +27,17 @@ COPY src/ src/
 RUN ./mvnw.cmd --batch-mode --no-transfer-progress verify; \
     if ($LASTEXITCODE -ne 0) { throw ('Maven build failed with exit code {0}' -f $LASTEXITCODE) }
 
-FROM mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-${OS_BASE}
+FROM faulo/choco:windowsservercore-${OS_BASE}
 
 SHELL ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell", "-NonInteractive", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # Runtime tools
-RUN Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')); \
-    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { throw 'Chocolatey installation failed' }
-
 COPY windows/jenkins-agent.nuspec C:/build/jenkins-agent.nuspec
 COPY windows/tools/ C:/build/tools/
 
-RUN choco pack C:/build/jenkins-agent.nuspec --output-directory C:/build --limit-output; \
-    if ($LASTEXITCODE -ne 0) { throw ('choco pack jenkins-agent failed with exit code {0}' -f $LASTEXITCODE) }; \
-    choco install jenkins-agent --yes --no-progress --limit-output --source 'C:/build;https://community.chocolatey.org/api/v2/'; \
-    if ($LASTEXITCODE -notin 0, 1641, 3010) { throw ('choco install jenkins-agent failed with exit code {0}' -f $LASTEXITCODE) }; \
-    Remove-Item -Recurse -Force C:/build
+RUN choco-install C:/build/jenkins-agent.nuspec; \
+    if ($LASTEXITCODE -ne 0) { throw ('choco-install jenkins-agent failed with exit code {0}' -f $LASTEXITCODE) }; \
+    Remove-Item -LiteralPath C:/build -Recurse -Force
 
 RUN java.exe -version; \
     if ($LASTEXITCODE -ne 0 -or -not $env:JAVA_HOME -or (Get-Command javac.exe -ErrorAction SilentlyContinue)) { throw 'Java runtime smoke check failed' }; \

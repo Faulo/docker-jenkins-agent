@@ -2,14 +2,13 @@
 
 This repository builds Linux and Windows variants of one Docker image for
 Jenkins agents. The Linux variant uses Debian Trixie Slim, and the Windows
-variants use the matching .NET Framework 4.8 Windows Server Core runtime image.
+variants use the matching `faulo/choco` Windows Server Core image.
 Linux installs the Debian OpenJDK 25 headless runtime, Windows installs the
 Eclipse Temurin 25 runtime, and both install Git with Git LFS. A shared Java
 entrypoint launches Jenkins
 Remoting directly; the image does not include or call the inbound-agent shell
-or PowerShell launchers. The Windows base remains the .NET Framework runtime
-because Chocolatey requires Windows PowerShell and .NET Framework; the agent
-entrypoint itself does not use .NET.
+or PowerShell launchers. The shared Windows base supplies Chocolatey and its
+framework prerequisites; the Java agent does not require .NET Framework 4.8.
 
 At each Jenkins-agent startup, the entrypoint downloads `jnlpJars/agent.jar`
 from `JENKINS_URL` next to `/jenkins/launcher.jar`. This
@@ -33,8 +32,8 @@ its launcher fixed as `ENTRYPOINT`. Use a separate tool image as the body of
 | Variant | Dockerfile | Base image | Docker context |
 | --- | --- | --- | --- |
 | Linux | `linux/Dockerfile` | `debian:trixie-slim` | `linux` |
-| Windows LTSC 2019 | `windows/Dockerfile` | `mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-ltsc2019` | `windows` |
-| Windows LTSC 2022 | `windows/Dockerfile` | `mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-ltsc2022` | `windows` |
+| Windows LTSC 2019 | `windows/Dockerfile` | `faulo/choco:windowsservercore-ltsc2019` | `windows` |
+| Windows LTSC 2022 | `windows/Dockerfile` | `faulo/choco:windowsservercore-ltsc2022` | `windows` |
 
 Both variants provide the same agent-level capabilities:
 
@@ -66,8 +65,18 @@ Linux runtime packages are declared in `linux/jenkins-agent.packages` and
 installed together through APT. NodeSource's moving current repository supplies
 Node.js and its bundled npm. On Windows, the corresponding dependencies are
 declared in `windows/jenkins-agent.nuspec` and installed together through
-Chocolatey. The Windows meta-package wraps Unity Version Control's signed
+the base's `choco-install` command, including the package's `windows/tools`
+payload. The Windows meta-package wraps Unity Version Control's signed
 vendor installer because it is not published as a Chocolatey package.
+
+The shared base supplies dependency planning, package retries, Visual C++
+prerequisites, and Windows installer compatibility fixes. Report native-installer
+stalls or failures to [Faulo/docker-choco](https://github.com/Faulo/docker-choco/issues)
+and link them from the downstream issue. Include the package ID/version, base
+tag/digest, host build and isolation mode, exact command/nuspec, relevant logs,
+exit code or timeout, and a fresh-container reproduction without credentials.
+Keep the affected migration blocked until the shared fix is validated; do not
+replace ordinary Chocolatey installation with a downstream bypass.
 
 The Linux container connects to
 `unix:///var/run/docker.sock`. The Windows container connects to
@@ -190,8 +199,8 @@ The explicit `serve` command accepts the same arguments, for example
 appliance launcher:
 
 ```text
-docker run --rm --entrypoint /bin/sh faulo/jenkins-agent:latest -c "java -version"
-docker run --rm --entrypoint powershell.exe faulo/jenkins-agent:latest-ltsc2019 -NoProfile -Command "java -version"
+docker --context linux run --rm --entrypoint /bin/sh faulo/jenkins-agent:latest -c "java -version"
+docker --context windows run --rm --entrypoint powershell.exe faulo/jenkins-agent:latest-windowsservercore-ltsc2019 -NoProfile -Command "java -version"
 ```
 
 `JENKINS_WEB_SOCKET` defaults to `true`. It accepts `1` or `true` to enable
@@ -332,13 +341,28 @@ reviewed before exposing agents to untrusted jobs.
 
 ## Automation
 
-The GitHub Actions workflow publishes the configured image through the shared
-`Faulo/workflows-docker` workflow. The Windows variants are named `ltsc2019`
-and `ltsc2022`, producing the platform tags `latest-ltsc2019` and
-`latest-ltsc2022`. The combined `latest` manifest lists LTSC 2022 first so
-newer compatible hosts prefer it while LTSC 2019 hosts retain a matching
-fallback. The workflow runs when either Dockerfile changes, can be started
-manually, and runs monthly to pick up refreshed base images.
+The GitHub Actions caller uses `Faulo/workflows-docker@v3` and `docker.json`
+schema version 2. Namespace and image resolve from the tracked `.env`.
+It publishes the combined `latest` tag and target-specific tags:
+
+- `latest-linux-amd64`
+- `latest-windowsservercore-ltsc2019`
+- `latest-windowsservercore-ltsc2022`
+
+Use a target-specific tag to select an exact Windows release. The combined
+tag lets Docker select a compatible platform. Historical tags are retained
+but are no longer refreshed. The workflow runs on pushes to `main`, manual
+dispatch, and monthly to pick up refreshed base images.
+
+The shared workflow builds both Windows releases with Hyper-V isolation,
+verifies published digests and platform metadata, and deletes its staging tags.
+Docker Hub credentials need publication and staging-tag deletion permissions.
+Jenkins runs unit tests and complete integration coverage for `latest` on
+Garl (Linux) and Dende (LTSC 2019). The fleet currently has no LTSC 2022 host:
+that target receives GitHub build-time checks and publication verification,
+but does not receive the Jenkins runtime integration suite.
+Each Jenkins host/variant run has a 90-minute timeout to accommodate fresh
+Windows containers and the health acceptance image build on Dende.
 
 The shared workflow persists Linux BuildKit layers in the GitHub Actions cache.
 For Windows, it pulls the previously published platform image and passes it to

@@ -1,0 +1,36 @@
+{
+    "schemaVersion": 2,
+    "namespace": "$DOCKER_NAMESPACE",
+    "image": "$DOCKER_IMAGE",
+    "context": ".",
+    "targets": [
+        {
+            "tag": "linux-amd64",
+            "dockerfile": "linux/Dockerfile",
+            "runner": "ubuntu-latest"
+        },
+        {
+            "tag": "windowsservercore-ltsc2019",
+            "dockerfile": "windows/Dockerfile",
+            "runner": "windows-latest",
+            "buildArgs": {
+                "OS_BASE": "ltsc2019",
+                "BUILD_OS_BASE": "1809"
+            }
+        },
+        {
+            "tag": "windowsservercore-ltsc2022",
+            "dockerfile": "windows/Dockerfile",
+            "runner": "windows-latest",
+            "buildArgs": {
+                "OS_BASE": "ltsc2022",
+                "BUILD_OS_BASE": "ltsc2022"
+            }
+        }
+    ],
+    "variants": [
+        {
+            "tag": "latest"
+        }
+    ]
+}
