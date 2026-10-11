@@ -11,13 +11,17 @@ pipeline {
         stage('Unit Tests') {
             agent {
                 docker {
-                    image 'mcr.microsoft.com/dotnet/sdk:9.0'
+                    image 'maven:3-eclipse-temurin-25'
                     label 'docker && linux'
                 }
             }
             steps {
-                exec 'dotnet test --logger junit'
-                junit(testResults: '**/TestResults.xml', allowEmptyResults: true)
+                exec 'mvn --batch-mode --no-transfer-progress clean test'
+            }
+            post {
+                always {
+                    junit(testResults: '**/target/surefire-reports/TEST-*.xml', allowEmptyResults: false)
+                }
             }
         }
         stage('Integration Tests') {
