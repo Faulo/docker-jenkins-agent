@@ -1,0 +1,33 @@
+name: Windows installer reproduction
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-core:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Record host and base metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $service = Get-Service docker
+          if ($service.Status -ne 'Running') { Start-Service docker }
+          $os = Get-CimInstance Win32_OperatingSystem
+          $revision = (Get-ItemProperty 'HKLM:/SOFTWARE/Microsoft/Windows NT/CurrentVersion').UBR
+          Write-Output ('Host: {0}, {1}.{2}' -f $os.Caption, $os.Version, $revision)
+          $base = 'faulo/choco:windowsservercore-ltsc2022@sha256:a418802f2342dc0e23971b83c3279c0fb590061e0b0e1a98600cbc680dea8eba'
+          docker --context default pull $base
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          docker --context default image inspect $base --format '{{json .RepoDigests}} {{.OsVersion}}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install PowerShell in a fresh Hyper-V container
+        shell: pwsh
+        run: |
+          docker --context default build --isolation=hyperv --tag tmp/jenkins-agent-powershell-core:reproduction --file tests/reproductions/powershell-core/Dockerfile .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

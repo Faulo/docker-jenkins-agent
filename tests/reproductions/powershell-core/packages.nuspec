@@ -1,0 +1,11 @@
+<package>
+    <metadata>
+        <id>powershell-core-reproduction</id>
+        <version>1.0.0</version>
+        <authors>Daniel Schulz</authors>
+        <description>Minimal reproduction of the LTSC 2022 PowerShell package installation stall.</description>
+        <dependencies>
+            <dependency id="powershell-core" version="[7.6.6]" />
+        </dependencies>
+    </metadata>
+</package>
