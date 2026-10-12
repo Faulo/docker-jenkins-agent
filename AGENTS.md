@@ -22,8 +22,6 @@ Keep Dockerfile comments focused on non-obvious constraints and reasons. Preserv
 
 Prefer rolling updates of dependencies over pinned and checksummed versions. Preserve native exit-code checks, and explicit error handling.
 
-Windows runtimes derive from the matching `faulo/choco:windowsservercore-<release>` image. Install nuspecs and their tool payloads through `choco-install`. Native-installer failures belong in `Faulo/docker-choco`: report the package ID/version, base tag/digest, host Windows build and isolation mode, exact command/nuspec, relevant logs, exit code or timeout, and a fresh-container reproduction without credentials. Link the upstream issue from the downstream migration and keep the affected migration blocked until the shared fix is validated. Do not add manual-install bypasses, suppress package scripts, fabricate package records, or add downstream compatibility patches.
-
 Use the Idea MCP to inspect source files for warnings and optimizations. Lint the code.
 
 Use the patterns in `C:\Webserver\dockerfile-templates` when applicable.
@@ -93,7 +91,7 @@ An agent may perform Git mutations only after the user explicitly opts in. Permi
 
 When Git mutations are authorized:
 
-- The user is responsible for choosing the branch. Verify the current branch and working-tree status before editing and again before creating commits.
+- Do not change the current branch unless asked. Verify the working-tree status before editing and again before creating commits.
 - Treat all unknown local changes as user work. Do not overwrite, stage, commit, restore, or otherwise alter them.
 - Keep commits small and cohesive.
 - Format agent-authored commits according to Conventional Commits 1.0.0: `<type>[optional scope]: <description>`.
