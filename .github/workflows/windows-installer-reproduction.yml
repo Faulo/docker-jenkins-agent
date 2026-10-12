@@ -8,8 +8,17 @@ permissions:
 
 jobs:
   powershell-core:
+    name: ${{ matrix.case }}
     runs-on: windows-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: minimal
+            dockerfile: tests/reproductions/powershell-core/Dockerfile
+          - case: agent-dependencies
+            dockerfile: tests/reproductions/powershell-core/AgentDependencies.Dockerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Record host and base metadata
@@ -28,6 +37,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install PowerShell in a fresh Hyper-V container
         shell: pwsh
+        env:
+          REPRO_DOCKERFILE: ${{ matrix.dockerfile }}
         run: |
-          docker --context default build --isolation=hyperv --tag tmp/jenkins-agent-powershell-core:reproduction --file tests/reproductions/powershell-core/Dockerfile .
+          docker --context default build --isolation=hyperv --tag tmp/jenkins-agent-powershell-core:reproduction --file $env:REPRO_DOCKERFILE .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
