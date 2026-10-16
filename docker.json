@@ -1,36 +1,51 @@
 {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "namespace": "$DOCKER_NAMESPACE",
     "image": "$DOCKER_IMAGE",
     "context": ".",
-    "targets": [
-        {
-            "tag": "linux-amd64",
-            "dockerfile": "linux/Dockerfile",
-            "runner": "ubuntu-latest"
-        },
-        {
-            "tag": "windowsservercore-ltsc2019",
-            "dockerfile": "windows/Dockerfile",
-            "runner": "windows-latest",
-            "buildArgs": {
-                "OS_BASE": "ltsc2019",
-                "BUILD_OS_BASE": "1809"
+    "matrix": {
+        "product": {
+            "tags": {
+                "latest": {}
             }
         },
-        {
-            "tag": "windowsservercore-ltsc2022",
-            "dockerfile": "windows/Dockerfile",
-            "runner": "windows-latest",
-            "buildArgs": {
-                "OS_BASE": "ltsc2022",
-                "BUILD_OS_BASE": "ltsc2022"
+        "os": {
+            "dockerfile": "{{matrix.os}}/Dockerfile",
+            "tags": {
+                "linux": {
+                    "runner": "ubuntu-latest",
+                    "matrix": {
+                        "architecture": {
+                            "tags": {
+                                "amd64": {}
+                            }
+                        }
+                    }
+                },
+                "windowsservercore": {
+                    "runner": "windows-latest",
+                    "matrix": {
+                        "release": {
+                            "tags": {
+                                "ltsc2019": {
+                                    "buildArgs": {
+                                        "BUILD_OS_BASE": "1809"
+                                    }
+                                },
+                                "ltsc2022": {
+                                    "buildArgs": {
+                                        "BUILD_OS_BASE": "ltsc2022"
+                                    }
+                                }
+                            },
+                            "buildArgs": {
+                                "OS_BASE": "{{matrix.release}}"
+                            }
+                        }
+                    },
+                    "dockerfile": "windows/Dockerfile"
+                }
             }
         }
-    ],
-    "variants": [
-        {
-            "tag": "latest"
-        }
-    ]
+    }
 }

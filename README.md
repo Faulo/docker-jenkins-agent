@@ -342,16 +342,18 @@ reviewed before exposing agents to untrusted jobs.
 ## Automation
 
 The GitHub Actions caller uses `Faulo/workflows-docker@v3` and `docker.json`
-schema version 2. Namespace and image resolve from the tracked `.env`.
-It publishes the combined `latest` tag and target-specific tags:
+schema version `3` with recursive matrix axes. Namespace and image resolve
+from the tracked `.env`.
+It publishes the combined `latest` tag, intermediate `latest-linux` and
+`latest-windowsservercore` indices, and target-specific tags:
 
 - `latest-linux-amd64`
 - `latest-windowsservercore-ltsc2019`
 - `latest-windowsservercore-ltsc2022`
 
 Use a target-specific tag to select an exact Windows release. The combined
-tag lets Docker select a compatible platform. Historical tags are retained
-but are no longer refreshed. The workflow runs on pushes to `main`, manual
+tag lets Docker select a compatible platform. Unconfigured historical tags
+are retained but are no longer refreshed. The workflow runs on pushes to `main`, manual
 dispatch, and monthly to pick up refreshed base images.
 
 The shared workflow builds both Windows releases with Hyper-V isolation,
