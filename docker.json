@@ -5,6 +5,7 @@
     "description": "Jenkins inbound agents with Java 25, Git, Docker CLI, and build tools for Linux and Windows",
     "overviewFile": "README.md",
     "context": ".",
+    "cleanupWindowsRunner": true,
     "matrix": {
         "product": {
             "tags": {
@@ -24,7 +25,7 @@
                         }
                     }
                 },
-                "windowsservercore": {
+                "windows": {
                     "runner": "windows-latest",
                     "matrix": {
                         "release": {

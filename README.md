@@ -17,9 +17,9 @@ agent's connection state through Docker health checks.
 | --- | --- | --- |
 | `latest` | Linux amd64 and Windows amd64 | Debian Trixie Slim; Windows Server Core LTSC 2019 and LTSC 2022 |
 | `latest-linux`, `latest-linux-amd64` | Linux amd64 | Debian Trixie Slim |
-| `latest-windowsservercore` | Windows amd64 | Windows Server Core LTSC 2019 and LTSC 2022 through `faulo/choco` |
-| `latest-windowsservercore-ltsc2019` | Windows amd64 | Windows Server Core LTSC 2019 through `faulo/choco` |
-| `latest-windowsservercore-ltsc2022` | Windows amd64 | Windows Server Core LTSC 2022 through `faulo/choco` |
+| `latest-windows` | Windows amd64 | Windows Server Core LTSC 2019 and LTSC 2022 through `faulo/choco` |
+| `latest-windows-ltsc2019` | Windows amd64 | Windows Server Core LTSC 2019 through `faulo/choco` |
+| `latest-windows-ltsc2022` | Windows amd64 | Windows Server Core LTSC 2022 through `faulo/choco` |
 
 Use `latest` for automatic platform selection or an LTSC-specific tag to
 select a Windows release. Windows containers require a compatible Windows
