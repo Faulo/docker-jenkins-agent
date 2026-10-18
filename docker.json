@@ -2,6 +2,8 @@
     "schemaVersion": 3,
     "namespace": "$DOCKER_NAMESPACE",
     "image": "$DOCKER_IMAGE",
+    "description": "Jenkins inbound agents with Java 25, Git, Docker CLI, and build tools for Linux and Windows",
+    "overviewFile": "README.md",
     "context": ".",
     "matrix": {
         "product": {

@@ -1,372 +1,305 @@
-# Cross-platform Jenkins inbound agent
+# Jenkins inbound agent for Linux and Windows containers
 
-This repository builds Linux and Windows variants of one Docker image for
-Jenkins agents. The Linux variant uses Debian Trixie Slim, and the Windows
-variants use the matching `faulo/choco` Windows Server Core image.
-Linux installs the Debian OpenJDK 25 headless runtime, Windows installs the
-Eclipse Temurin 25 runtime, and both install Git with Git LFS. A shared Java
-entrypoint launches Jenkins
-Remoting directly; the image does not include or call the inbound-agent shell
-or PowerShell launchers. The shared Windows base supplies Chocolatey and its
-framework prerequisites; the Java agent does not require .NET Framework 4.8.
+[![Docker](https://github.com/Faulo/docker-jenkins-agent/actions/workflows/docker.yml/badge.svg?branch=main)](https://github.com/Faulo/docker-jenkins-agent/actions/workflows/docker.yml) [![Docker image updated](https://img.shields.io/docker/last-updated/faulo/jenkins-agent/latest)](https://hub.docker.com/r/faulo/jenkins-agent/tags?name=latest) [![License: MIT](https://img.shields.io/github/license/Faulo/docker-jenkins-agent)](LICENSE) [![Platforms: Linux and Windows amd64](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20amd64-0078D4)](#available-images)
 
-At each Jenkins-agent startup, the entrypoint downloads `jnlpJars/agent.jar`
-from `JENKINS_URL` next to `/jenkins/launcher.jar`. This
-keeps Remoting aligned with the controller instead of the image's build date.
-The download is validated and installed atomically. Startup fails if the
-controller URL is missing, invalid, or does not return a JAR.
+[`faulo/jenkins-agent`](https://hub.docker.com/r/faulo/jenkins-agent) connects
+Linux and Windows containers to a Jenkins controller as inbound agents. It
+includes Java 25, Git and Git LFS, Unity Version Control, Node.js, PowerShell,
+and the Docker CLI for running jobs and launching separate build containers.
 
-The image is a dedicated Jenkins inbound-agent appliance. Jobs running on that
-agent can use Git, Unity Version Control (the `cm` command), Node.js,
-PowerShell, and a Docker daemon supplied by the host. The image contains only
-the Docker client; it does not contain or run a Docker daemon.
+The launcher downloads Jenkins Remoting from your controller at startup,
+supports environment-based or indexed YAML configuration, and reports the
+agent's connection state through Docker health checks.
 
-Do not use this appliance image as the build environment passed to the Docker
-Pipeline plugin's `docker.image("image").inside { ... }` API. That API replaces
-the image command to start a temporary build container, while this image keeps
-its launcher fixed as `ENTRYPOINT`. Use a separate tool image as the body of
-`inside {}`; jobs running on this agent may still create those containers.
+## Available images
 
-## Image variants
-
-| Variant | Dockerfile | Base image | Docker context |
-| --- | --- | --- | --- |
-| Linux | `linux/Dockerfile` | `debian:trixie-slim` | `linux` |
-| Windows LTSC 2019 | `windows/Dockerfile` | `faulo/choco:windowsservercore-ltsc2019` | `windows` |
-| Windows LTSC 2022 | `windows/Dockerfile` | `faulo/choco:windowsservercore-ltsc2022` | `windows` |
-
-Both variants provide the same agent-level capabilities:
-
-| Capability | Linux | Windows |
+| Tag | Platform | Runtime base |
 | --- | --- | --- |
-| Jenkins Remoting runtime | Downloaded at startup | Downloaded at startup |
+| `latest` | Linux amd64 and Windows amd64 | Debian Trixie Slim; Windows Server Core LTSC 2019 and LTSC 2022 |
+| `latest-linux`, `latest-linux-amd64` | Linux amd64 | Debian Trixie Slim |
+| `latest-windowsservercore` | Windows amd64 | Windows Server Core LTSC 2019 and LTSC 2022 through `faulo/choco` |
+| `latest-windowsservercore-ltsc2019` | Windows amd64 | Windows Server Core LTSC 2019 through `faulo/choco` |
+| `latest-windowsservercore-ltsc2022` | Windows amd64 | Windows Server Core LTSC 2022 through `faulo/choco` |
+
+Use `latest` for automatic platform selection or an LTSC-specific tag to
+select a Windows release. Windows containers require a compatible Windows
+host. Tags receive updates in place; pin an image digest when you need an
+exact image.
+
+## Quick start
+
+Create an agent in Jenkins and select **Launch agents by connecting it to the
+controller**. Set its remote root directory to `/jenkins` for Linux or
+`C:/jenkins` for Windows.
+
+Set `JENKINS_URL`, `JENKINS_AGENT_NAME`, and `JENKINS_SECRET` in your shell
+or a private Compose environment file using the connection details Jenkins
+provides. The controller URL must be reachable from the container.
+
+For a Linux container, save this as `compose.yaml`:
+
+```yaml
+services:
+  agent:
+    image: faulo/jenkins-agent:latest
+    restart: unless-stopped
+    environment:
+      JENKINS_URL: ${JENKINS_URL:?Set JENKINS_URL}
+      JENKINS_AGENT_NAME: ${JENKINS_AGENT_NAME:?Set JENKINS_AGENT_NAME}
+      JENKINS_SECRET: ${JENKINS_SECRET:?Set JENKINS_SECRET}
+    volumes:
+      - jenkins-workspace:/jenkins/workspace
+
+volumes:
+  jenkins-workspace:
+```
+
+For a Windows-container engine, use the same configuration with this volume
+target instead:
+
+```yaml
+    volumes:
+      - jenkins-workspace:c:/jenkins/workspace
+```
+
+Start the agent and inspect its state:
+
+```text
+docker compose up --detach
+docker compose ps
+docker compose logs agent
+```
+
+WebSocket transport is enabled by default. The container makes the outbound
+connection to Jenkins; this setup requires no published agent port.
+
+At every agent startup, the launcher downloads
+`<JENKINS_URL>/jnlpJars/agent.jar`, validates the response, and installs it
+atomically beside the launcher. The controller must serve that endpoint as a
+JAR. A missing or invalid URL, failed download, or non-JAR response stops
+startup, including when an earlier download exists.
+
+## Included tools
+
+| Tool | Linux | Windows |
+| --- | --- | --- |
 | Java 25 runtime | Debian OpenJDK | Eclipse Temurin |
-| Git and Git LFS | Yes | Yes |
-| Unity Version Control CLI (`cm`) | Core client package | Client installer |
-| Docker CLI | Client binary only | Client binary only |
-| Node.js (`node`, `npm`, and `npx`) | Yes | Yes |
-| PowerShell (`pwsh`) | Yes | Yes |
-| Indexed YAML agent configuration | Yes | Yes |
+| Jenkins Remoting | Downloaded from the controller at startup | Downloaded from the controller at startup |
+| Git and Git LFS | Included | Included |
+| Unity Version Control (`cm`) | Included | Included |
+| Node.js, npm, and npx | Included | Included |
+| PowerShell (`pwsh`) | Included | Included |
+| Docker CLI | Included | Included |
 
-Docker Compose is intentionally not installed. Jenkins jobs use the Docker CLI
-directly when they create build containers.
+The runtime image contains the Java runtime; use a separate build environment
+when a job needs JDK tools such as `javac`. Docker Compose and a Docker daemon
+are not included. The Windows variants receive their prerequisites and
+installer compatibility fixes from
+[`faulo/choco`](https://github.com/Faulo/docker-choco).
 
-Both Dockerfiles follow Java major version 25. The runtime images intentionally
-exclude JDK development tools such as `javac`; jobs that compile Java should use
-a dedicated build container. Every other tool follows the
-newest package available from its configured APT or Chocolatey source at build
-time, including major-version upgrades. Linux and Windows versions can differ
-when their package repositories publish on different schedules.
+## Agent configuration
 
-The package managers refresh their indexes whenever the installation layer is
-executed. Both variants currently target x86-64 hosts.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `JENKINS_URL` | required | Absolute HTTP or HTTPS controller URL, including any context path |
+| `JENKINS_AGENT_NAME` | none | Inbound agent name configured in Jenkins |
+| `JENKINS_SECRET` | none | Inbound agent secret supplied by Jenkins |
+| `JENKINS_WEB_SOCKET` | `true` | Enable WebSocket transport; accepts `true`, `false`, `1`, or `0` |
+| `JENKINS_AGENT_WORKDIR` | platform remote root | Remoting working directory |
+| `JENKINS_TUNNEL` | none | Optional tunnel address for TCP transport |
+| `JENKINS_CONFIG_FILE` | none | Mounted YAML file for indexed configuration |
+| `JENKINS_CONFIG_INDEX` | none | Case-sensitive key selecting one record from that file |
 
-Linux runtime packages are declared in `linux/jenkins-agent.packages` and
-installed together through APT. NodeSource's moving current repository supplies
-Node.js and its bundled npm. On Windows, the corresponding dependencies are
-declared in `windows/jenkins-agent.nuspec` and installed together through
-the base's `choco-install` command, including the package's `windows/tools`
-payload. The Windows meta-package wraps Unity Version Control's signed
-vendor installer because it is not published as a Chocolatey package.
+WebSocket values are case-insensitive and ignore surrounding whitespace.
+An unset or blank value uses the default; other values fail startup.
 
-The shared base supplies dependency planning, package retries, Visual C++
-prerequisites, and Windows installer compatibility fixes. Report native-installer
-stalls or failures to [Faulo/docker-choco](https://github.com/Faulo/docker-choco/issues)
-and link them from the downstream issue. Include the package ID/version, base
-tag/digest, host build and isolation mode, exact command/nuspec, relevant logs,
-exit code or timeout, and a fresh-container reproduction without credentials.
-Keep the affected migration blocked until the shared fix is validated; do not
-replace ordinary Chocolatey installation with a downstream bypass.
+The launcher also supports `JENKINS_NAME` as a legacy agent-name alias and the
+Remoting settings `JENKINS_DIRECT_CONNECTION`, `JENKINS_INSTANCE_IDENTITY`,
+and `JENKINS_PROTOCOLS`. Explicit Remoting arguments take precedence over
+environment-derived arguments.
 
-The Linux container connects to
-`unix:///var/run/docker.sock`. The Windows container connects to
-`npipe:////./pipe/docker_engine`. The matching socket or named pipe must be
-made available when the container is started.
+`JENKINS_JAVA_BIN` selects the Java executable; otherwise the launcher uses
+`JAVA_HOME` and then `PATH`. `JENKINS_JAVA_OPTS` falls back to `JAVA_OPTS`,
+and `REMOTING_OPTS` supplies additional Remoting arguments. Quoted option
+values remain single arguments on both platforms.
 
-## Prerequisites
+The default command is `serve`. Docker command arguments and Compose
+`command:` are passed to the fixed Java launcher. For example,
+`command: ["serve", "-webSocket"]` supplies an explicit Remoting option.
+The `health` command runs the connection health probe.
 
-- A Docker client on the host.
-- A Linux Docker daemon available through the `linux` Docker context.
-- A Windows Docker daemon available through the `windows` Docker context.
-- A Windows host version compatible with the selected
-  `windowsservercore-ltsc2019` or `windowsservercore-ltsc2022` base image when
-  building or running a Windows variant.
+This image hosts the Jenkins agent itself. For Docker Pipeline
+`docker.image(...).inside { ... }` build environments, select a separate tool
+image whose command the plugin can replace.
 
-Check the daemons before building:
+### Indexed YAML configuration
 
-```text
-docker --context linux info
-docker --context windows info
-```
-
-The commands must report `linux` and `windows`, respectively.
-
-## Build
-
-The project configuration in `.env` sets the image name. With the repository's
-default configuration, local builds are tagged as
-`tmp/jenkins-agent:latest`.
-
-Both Dockerfiles compile and test the Maven project in `src/` before assembling
-the runtime image. Opening the repository root as a Maven project in IntelliJ
-uses Java 25 and the checked-in `pom.xml` directly. The launcher uses the Java
-package `net.slothsoft.jenkins.agentlauncher` and Maven coordinates
-`net.slothsoft.jenkins:agent-launcher`.
-
-Build directly from the repository root:
-
-```text
-docker --context linux build --tag tmp/jenkins-agent:latest --file linux/Dockerfile .
-docker --context windows build --tag tmp/jenkins-agent:latest --file windows/Dockerfile .
-```
-
-The Windows Dockerfile installs the latest Eclipse Temurin Java 25 JDK in its
-build stage and uses the checked-in Maven Wrapper, without installing
-Chocolatey in the builder. It defaults to an `1809` builder for the LTSC 2019
-runtime. Build either Windows
-variant explicitly with its matching image tag and build arguments:
-
-```text
-docker --context windows build --build-arg OS_BASE=ltsc2019 --build-arg BUILD_OS_BASE=1809 --tag tmp/jenkins-agent:ltsc2019 --file windows/Dockerfile .
-docker --context windows build --build-arg OS_BASE=ltsc2022 --build-arg BUILD_OS_BASE=ltsc2022 --tag tmp/jenkins-agent:ltsc2022 --file windows/Dockerfile .
-```
-
-On Windows, the following interactive entry points provide the same builds and
-pause before closing so their output remains visible:
-
-- `docker-build-linux.bat`
-- `docker-build-windows.bat`
-
-The shared `docker-build.bat` script accepts `linux` or `windows` as its first
-argument. When called without an argument, it builds for the active Docker
-daemon.
-
-## Test
-
-The Pester integration suite verifies the image's platform, tools, runtime
-user, entrypoint configuration, controller-supplied Remoting JAR, and health
-monitor contract. Set `JENKINS_URL` to the Jenkins controller whose Remoting
-JAR should be tested, then run the suite against either Docker context:
-
-```powershell
-$env:JENKINS_URL = 'https://jenkins.example/'
-pwsh ./.jenkins/Invoke-IntegrationTests.ps1 -Pull -Context linux
-pwsh ./.jenkins/Invoke-IntegrationTests.ps1 -Pull -Context windows
-```
-
-The root `.env` defines the image name and optional platform-specific Docker
-run arguments. Use `-Namespace tmp` to test locally built candidate images.
-Do not commit credentials to `.env`. Treat access to a host Docker socket or
-named pipe as privileged access to that Docker daemon.
-
-## Use with Jenkins
-
-Both platforms use an exec-form appliance contract. `ENTRYPOINT` is fixed to
-`java -jar` plus the platform launcher path, while `CMD` contains only the
-default `serve` launcher command. Docker command arguments and Compose
-`command:` replace `CMD` but remain arguments to the launcher. They cannot
-replace the launcher itself.
-
-The command can be omitted when the controller URL, agent secret, and agent
-name are supplied as environment variables:
+Mount a YAML document containing one environment mapping per index:
 
 ```yaml
-services:
-  agent:
-    image: faulo/jenkins-agent:latest
-    environment:
-      JENKINS_URL: http://jenkins:8080/
-      JENKINS_SECRET: xxx
-      JENKINS_AGENT_NAME: yyy
+linux-builder:
+  JENKINS_AGENT_NAME: linux-builder
+  JENKINS_SECRET: replace-with-agent-secret
+windows-builder:
+  JENKINS_AGENT_NAME: windows-builder
+  JENKINS_SECRET: replace-with-agent-secret
 ```
 
-The Java entrypoint also accepts Remoting connection arguments through `command`.
-`JENKINS_URL` must still be present in the environment because it identifies
-the controller that supplies `jnlpJars/agent.jar`:
+Set both `JENKINS_CONFIG_FILE` and `JENKINS_CONFIG_INDEX` to select a record.
+The file can be mounted as a Docker secret; standard secret paths are
+`/run/secrets/<name>` on Linux and
+`C:/ProgramData/Docker/secrets/<name>` for Windows Swarm services.
 
-```yaml
-services:
-  agent:
-    image: faulo/jenkins-agent:latest
-    environment:
-      JENKINS_URL: http://jenkins:8080/
-    command: ["-url", "http://jenkins:8080", "-secret", "xxx", "-name", "yyy", "-webSocket"]
-```
+Each selected environment name and value must be a scalar that can be
+represented safely as an environment variable. The selected mapping overrides
+the container environment. The launcher rejects missing files, malformed
+documents, missing or ambiguous indices, and invalid mappings before connecting
+to Jenkins. Diagnostics identify the file and index without printing selected
+values.
 
-The explicit `serve` command accepts the same arguments, for example
-`command: ["serve", "-url", "http://jenkins:8080", ...]`. Use Docker's
-`--entrypoint` option when diagnostics intentionally need to bypass the
-appliance launcher:
+For a global Swarm service, `JENKINS_CONFIG_INDEX: '{{.Node.Hostname}}'` can
+select the record matching each task's host. Keep the YAML document private
+because it contains agent credentials.
 
-```text
-docker --context linux run --rm --entrypoint /bin/sh faulo/jenkins-agent:latest -c "java -version"
-docker --context windows run --rm --entrypoint powershell.exe faulo/jenkins-agent:latest-windowsservercore-ltsc2019 -NoProfile -Command "java -version"
-```
+## Workspaces and Docker access
 
-`JENKINS_WEB_SOCKET` defaults to `true`. It accepts `1` or `true` to enable
-WebSocket and `0` or `false` to disable it. Matching is case-insensitive and
-ignores surrounding whitespace. An unset, empty, or whitespace-only value uses
-the default; every other value terminates startup with a configuration error.
-An explicit `-webSocket` command argument remains authoritative.
+Configure the Jenkins node's remote root to match the image:
 
-The entrypoint maps the launcher environment used by the official Jenkins
-images to Remoting arguments: `JENKINS_SECRET`, `JENKINS_AGENT_NAME` (and the
-legacy `JENKINS_NAME` alias), `JENKINS_TUNNEL`, `JENKINS_URL`,
-`JENKINS_AGENT_WORKDIR`, `JENKINS_WEB_SOCKET`, `JENKINS_DIRECT_CONNECTION`,
-`JENKINS_INSTANCE_IDENTITY`, and `JENKINS_PROTOCOLS`. Explicit command
-arguments take precedence and are not duplicated. `JENKINS_JAVA_BIN` selects
-Java; otherwise `JAVA_HOME` and then the platform `PATH` are used.
-`JENKINS_JAVA_OPTS` falls back to `JAVA_OPTS`, and `REMOTING_OPTS` supplies
-additional Remoting arguments. Quoted option values are kept as single
-arguments on both platforms.
-
-### Indexed agent configuration
-
-For a global Docker Swarm service, mount a YAML document containing one agent
-environment per index and set both of these variables:
-
-- `JENKINS_CONFIG_FILE`: the explicit path to the mounted YAML document.
-- `JENKINS_CONFIG_INDEX`: the exact, non-empty, case-sensitive top-level key to
-  select.
-
-For example:
-
-```yaml
-Dende:
-  JENKINS_AGENT_NAME: Dende
-  JENKINS_SECRET: example-secret
-groke:
-  JENKINS_AGENT_NAME: Mörkö
-  JENKINS_SECRET: example-secret
-```
-
-The selected value must be a mapping whose keys and values are YAML scalars
-that can be represented as environment variables. The selected mapping is
-applied after the container environment, so it is authoritative when a name
-is present in both places. Values are never printed by the entrypoint.
-
-A Linux Swarm service can select the record for the node hosting each task:
-
-```yaml
-services:
-  agent:
-    image: faulo/jenkins-agent:latest
-    environment:
-      JENKINS_CONFIG_FILE: /run/secrets/jenkins_agents_v1
-      JENKINS_CONFIG_INDEX: '{{.Node.Hostname}}'
-    secrets:
-      - jenkins_agents_v1
-    deploy:
-      mode: global
-      placement:
-        constraints:
-          - node.labels.slothsoft.jenkins-agent == true
-```
-
-Use the platform's actual secret mount path on Windows, for example
-`C:/ProgramData/Docker/secrets/jenkins_agents_v1`. If either configuration
-variable is set without the other, the file cannot be parsed, the index is
-missing or is not a mapping, or an entry cannot be represented safely, the
-container exits before starting Jenkins. Errors identify the file and index
-but do not include selected values.
-
-In addition to the Jenkins connection settings, mount the platform's Docker
-endpoint if jobs need to invoke Docker. Any job using this image can then use
-the host daemon through the included Docker CLI.
-
-When a job running on this appliance uses a separate image through
-`docker.image(...).inside { ... }`, the Jenkins agent and Docker daemon must see
-the same workspace filesystem. Jenkins detects that the agent is running in a
-container and uses `--volumes-from` to share its workspace with that nested
-build container.
-
-Configure the Jenkins node's **Remote root directory** to match the image:
-
-| Variant | Remote root | Job workspace root |
+| Platform | Remote root | Persistent workspace |
 | --- | --- | --- |
 | Linux | `/jenkins` | `/jenkins/workspace` |
-| Windows | `C:\jenkins` | `C:\jenkins\workspace` |
+| Windows | `C:/jenkins` | `C:/jenkins/workspace` |
 
-Both `AGENT_WORKDIR` and `JENKINS_AGENT_WORKDIR` are set to the corresponding
-remote root. The `workspace` directory is deliberately a child of that root
-and is declared as a Docker volume in each image. It is the path to mount when
-workspace persistence or host access is required.
+The workspace is a child of the remote root and is declared as a Docker volume.
+Persist it with a named volume or a host mount when jobs need reusable workspace
+state. Both `AGENT_WORKDIR` and `JENKINS_AGENT_WORKDIR` default to the remote root.
 
-## Health check
+Jobs that use the included Docker CLI need access to a Docker daemon. Add the
+appropriate mount to the agent service when that capability is required.
 
-Both variants use `java -jar /jenkins/launcher.jar health` (with the
-corresponding `C:/jenkins` path on Windows) as their Docker health check. The
-same JAR is loaded as a Java agent inside the Remoting process, where it
-attaches a listener to Remoting's engine. Typed disconnect, reconnect, error,
-and completion callbacks drive the state machine; the deliberately narrow
-`Connected` status signal confirms a successful connection. A non-blocking
-active-channel observation remains as a compatibility fallback. Unknown status
-texts and callbacks are ignored.
+Linux:
 
-The observer writes an atomic local status record. The short-lived Java health
-probe only validates that cached record against the Remoting process and a
-30-second freshness limit; it neither opens a controller connection nor queues
-work on the Remoting channel. A confirmed connection remains healthy without
-periodic round trips. Startup and reconnecting states remain healthy for a
-five-minute grace period, then become unhealthy while Remoting continues its
-own reconnect attempts. A fatal Remoting error or completed engine is an
-immediate hard failure. Repeated reconnect callbacks do not restart the grace
-period.
+```yaml
+    volumes:
+      - jenkins-workspace:/jenkins/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+```
 
-`JENKINS_HEALTH_INTERVAL_SECONDS`, `JENKINS_HEALTH_TIMEOUT_SECONDS`, and
-`JENKINS_HEALTH_STALE_SECONDS` override the 10-second observation interval,
-300-second startup/reconnect grace period, and 30-second status freshness
-limit. All must be positive integer seconds. `JENKINS_HEALTH_FILE` overrides
-the platform-specific status path, primarily for diagnostics.
+Windows:
 
-## Runtime defaults and security
+```yaml
+    volumes:
+      - type: volume
+        source: jenkins-workspace
+        target: c:/jenkins/workspace
+      - type: npipe
+        source: '\\.\pipe\docker_engine'
+        target: '\\.\pipe\docker_engine'
+```
 
-- Linux processes run as `root`; Windows processes run as
-  `ContainerAdministrator`.
-- Linux uses the built-in `C.UTF-8` locale so Java preserves non-ASCII agent
-  names in native protocol data.
-- `JAVA_OPTS` sets the Jenkins Git client operation timeout to 60 minutes.
-- Git treats every repository path as a safe directory. This avoids ownership
-  checks for host-mounted workspaces but removes that Git security boundary.
-- Linux consumes signed Debian, Microsoft, Docker, and NodeSource APT
-  repositories. Windows consumes the Chocolatey Community Repository for its
-  shared tool manifest, while the Unity Version Control installer must have a
-  valid Unity Authenticode signature.
-- The Linux Unity Version Control repository currently requires an
-  unauthenticated APT install because its legacy repository signature is
-  rejected by current Debian policy.
+The default Docker endpoint is `unix:///var/run/docker.sock` on Linux and
+`npipe:////./pipe/docker_engine` on Windows. Access to that endpoint grants
+jobs control over the attached engine; use it with trusted workloads.
 
-These defaults are suitable only for trusted Jenkins workloads and should be
-reviewed before exposing agents to untrusted jobs.
+When jobs launch nested build containers through Docker Pipeline, the agent
+and daemon must see the same workspace filesystem. Jenkins can use
+`--volumes-from` to share the agent container's workspace with those containers.
 
-## Automation
+## Health checks
 
-The GitHub Actions caller uses `Faulo/workflows-docker@v3` and `docker.json`
-schema version `3` with recursive matrix axes. Namespace and image resolve
-from the tracked `.env`.
-It publishes the combined `latest` tag, intermediate `latest-linux` and
-`latest-windowsservercore` indices, and target-specific tags:
+Docker health checks observe the Remoting connection through a local status
+record. The probe validates the record's process identity and freshness without
+opening another controller connection or submitting work over the Remoting
+channel.
 
-- `latest-linux-amd64`
-- `latest-windowsservercore-ltsc2019`
-- `latest-windowsservercore-ltsc2022`
+A confirmed connection is healthy. Startup and reconnecting states receive a
+five-minute grace period; after that, they are unhealthy while Remoting continues
+its own reconnect attempts. Repeated reconnect callbacks do not reset the
+grace period. Fatal errors and a completed Remoting engine fail health
+immediately.
 
-Use a target-specific tag to select an exact Windows release. The combined
-tag lets Docker select a compatible platform. Unconfigured historical tags
-are retained but are no longer refreshed. The workflow runs on pushes to `main`, manual
-dispatch, and monthly to pick up refreshed base images.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `JENKINS_HEALTH_INTERVAL_SECONDS` | `10` | Connection observation interval |
+| `JENKINS_HEALTH_TIMEOUT_SECONDS` | `300` | Startup and reconnect grace period |
+| `JENKINS_HEALTH_STALE_SECONDS` | `30` | Maximum status-record age |
+| `JENKINS_HEALTH_FILE` | platform status path | Override the status file for diagnostics |
 
-The shared workflow builds both Windows releases with Hyper-V isolation,
-verifies published digests and platform metadata, and deletes its staging tags.
-Docker Hub credentials need publication and staging-tag deletion permissions.
-Jenkins runs unit tests and complete integration coverage for `latest` on
-Garl (Linux) and Dende (LTSC 2019). The fleet currently has no LTSC 2022 host:
-that target receives GitHub build-time checks and publication verification,
-but does not receive the Jenkins runtime integration suite.
-Each Jenkins host/variant run has a 90-minute timeout to accommodate fresh
-Windows containers and the health acceptance image build on Dende.
+Timing overrides must be positive integer seconds.
 
-The shared workflow persists Linux BuildKit layers in the GitHub Actions cache.
-For Windows, it pulls the previously published platform image and passes it to
-Docker as the build cache source. Local Docker builds use each context's normal
-layer cache automatically.
+## Runtime defaults
+
+Linux runs as `root`; Windows runs as `ContainerAdministrator`. Git trusts
+all repository directories to support mounted workspaces, and its client
+operation timeout defaults to 60 minutes. Review these permissions before
+allowing untrusted jobs.
+
+Linux Unity Version Control packages come from a legacy APT source whose
+repository signature is not verified. Other configured APT sources use signed
+repositories. The Windows Unity Version Control installer requires a valid
+Unity Authenticode signature.
+
+## Maintenance and updates
+
+Linux amd64 and Windows Server Core LTSC 2019 and LTSC 2022 images are rebuilt
+monthly to pick up base-image and tool updates. Java follows major version 25;
+other tools follow their configured package sources, including major-version
+updates. Linux and Windows tool versions can differ as those sources change.
+
+Recreate agents with a newly pulled image to adopt image updates. Remoting is
+refreshed from the controller on every agent startup. Pin an image digest
+when you need an exact image; controller-provided Remoting remains dynamic.
+
+## Tests and development
+
+Launcher unit tests cover argument parsing, environment normalization, indexed
+configuration, controller JAR acquisition, process supervision, and connection
+health. Run them from the repository root with a Java 25 JDK and the Maven
+Wrapper.
+
+Linux or macOS:
+
+```sh
+./mvnw --batch-mode --no-transfer-progress verify
+```
+
+Windows:
+
+```powershell
+.\mvnw.cmd --batch-mode --no-transfer-progress verify
+```
+
+The repository also includes Pester image integration tests for platform tools,
+entrypoint behavior, controller-supplied Remoting, and health monitoring. They
+require a compatible container engine and a reachable Jenkins controller.
+
+Both Dockerfiles use the repository root as their build context. Build on an
+engine configured for the selected container OS:
+
+```text
+docker build --pull --file linux/Dockerfile --tag tmp/jenkins-agent:latest .
+docker build --pull --file windows/Dockerfile --tag tmp/jenkins-agent:latest .
+```
+
+The Windows build defaults to LTSC 2019. For LTSC 2022, select matching runtime
+and builder releases:
+
+```text
+docker build --pull --file windows/Dockerfile --build-arg OS_BASE=ltsc2022 --build-arg BUILD_OS_BASE=ltsc2022 --tag tmp/jenkins-agent:ltsc2022 .
+```
+
+## Support and contributions
+
+[Open an issue](https://github.com/Faulo/docker-jenkins-agent/issues) with the
+image tag or digest, container OS, transport mode, and a minimal reproduction.
+For Windows, include the host version and isolation mode. Remove credentials
+from logs and configuration before sharing them.
+
+Pull requests are welcome. Include tests for changes to launcher behavior and
+update the documentation when public settings change.
+
+## License
+
+The original launcher code, Dockerfiles, scripts, and documentation are licensed
+under the [MIT License](LICENSE). Jenkins Remoting, Java, bundled tools, and base
+images retain their respective licenses.
