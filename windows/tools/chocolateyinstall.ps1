@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$packageIndex = Join-Path $env:TEMP 'plastic-packages'
+$releasesPage = Join-Path $env:TEMP 'plastic-releases.html'
 $installer = Join-Path $env:TEMP 'plastic-installer.exe'
 
 try {
@@ -17,17 +17,18 @@ try {
 
     Get-ChocolateyWebFile `
         -PackageName $env:ChocolateyPackageName `
-        -FileFullPath $packageIndex `
-        -Url 'https://www.plasticscm.com/plasticrepo/stable/debian/Packages'
+        -FileFullPath $releasesPage `
+        -Url 'https://www.plasticscm.com/download'
 
-    $versions = [regex]::Matches(
-        (Get-Content $packageIndex -Raw),
-        '(?m)^Version:\s*(\S+)\s*$'
-    ) | ForEach-Object { [version]$_.Groups[1].Value }
-    $plasticVersion = $versions | Sort-Object -Descending | Select-Object -First 1
-    if (-not $plasticVersion) {
-        throw 'No Unity Version Control release found'
+    # The current download page advertises Windows installers; the Debian index can reject Windows requests.
+    $versions = @([regex]::Matches(
+        (Get-Content $releasesPage -Raw),
+        'href="/download/(\d+\.\d+\.\d+\.\d+)/plasticscm/windows/'
+    ) | ForEach-Object { [version]$_.Groups[1].Value } | Sort-Object -Unique)
+    if ($versions.Count -ne 1) {
+        throw 'Expected exactly one current Unity Version Control Windows release on the download page'
     }
+    $plasticVersion = $versions[0]
 
     $installerUrl = 'https://www.plasticscm.com/download/downloadinstaller/{0}/plasticscm/windows/client?flags=None' -f $plasticVersion
     Get-ChocolateyWebFile `
@@ -57,5 +58,5 @@ try {
         throw "Unexpected Unity Version Control version: $installedVersion"
     }
 } finally {
-    Remove-Item -LiteralPath $packageIndex, $installer -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $releasesPage, $installer -Force -ErrorAction SilentlyContinue
 }

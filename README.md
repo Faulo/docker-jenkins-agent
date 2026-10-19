@@ -237,7 +237,9 @@ allowing untrusted jobs.
 Linux Unity Version Control packages come from a legacy APT source whose
 repository signature is not verified. Other configured APT sources use signed
 repositories. The Windows Unity Version Control installer requires a valid
-Unity Authenticode signature.
+Unity Authenticode signature. Windows builds discover the current release from
+the public Unity Version Control download page, independently of the Linux APT
+repository.
 
 ## Maintenance and updates
 
